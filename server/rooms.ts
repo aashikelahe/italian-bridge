@@ -10,6 +10,7 @@ import { getPlayerView } from '../src/engine/view';
 import { DEFAULT_RULES, MATCH_TARGETS } from '../src/engine/config';
 import { SEATS, areOpponents, teamOf } from '../src/engine/seating';
 import { decideAIAction } from '../src/ai';
+import { resolveTrickWinner } from '../src/engine/rules';
 import { automaticAction } from '../src/ai/simulate';
 import {
   AWAY_MS, PACE_FACTOR, PACE_MS, ROOM_CODE_ALPHABET, cleanName,
@@ -43,6 +44,9 @@ export interface Room {
   createdAt: number;
   lastActive: number;
   lastThrowAt: number;
+  /** Seats that already smacked in the current trick (key = trick index). */
+  smacked: { trick: number; seats: Seat[] };
+  lastBotSmackAt: number;
 }
 
 const MAX_ROOMS = 500;
@@ -68,6 +72,7 @@ export class RoomManager {
       case 'start': return this.start(c);
       case 'act': return this.act(c, m.action);
       case 'throw': return this.throwEmoji(c, m.to, m.e);
+      case 'smack': return this.smack(c);
       case 'lobby': return this.backToLobby(c);
       case 'close': return this.close(c);
       default: return undefined;
@@ -98,6 +103,7 @@ export class RoomManager {
       code: this.newCode(), hostId: c.id, status: 'lobby', settings,
       seats: { A: null, B: null, C: null, D: null }, members: new Map(), chat: [], chatSeq: 0,
       game: null, timer: null, createdAt: now, lastActive: now, lastThrowAt: 0,
+      smacked: { trick: 0, seats: [] }, lastBotSmackAt: 0,
     };
     this.rooms.set(room.code, room);
     this.attach(c, room);
@@ -347,6 +353,7 @@ export class RoomManager {
 
   /** Computer players' emoji habits on a Friends table. */
   private afterChange(room: Room, prev: GameState, s: GameState) {
+    this.botSmack(room, prev, s);
     if (room.settings.tableType !== 'friends' || room.settings.mode !== 'team') return;
     const isBot = (seat: Seat) => !room.seats[seat];
     const pick = <T,>(xs: readonly T[]) => xs[randomInt(xs.length)];
@@ -372,6 +379,38 @@ export class RoomManager {
     if (now - room.lastThrowAt < 3000) return;
     room.lastThrowAt = now;
     setTimeout(() => this.broadcast(room, { t: 'throw', from, to, e }), delay);
+  }
+
+  /** SMACK / বাড়ি: once per trick, only after playing your card to it. */
+  private trySmack(room: Room, seat: Seat): boolean {
+    const t = room.game?.currentTrick;
+    if (!t || room.game?.phase !== 'PLAYING' || !t.plays.some((p) => p.seat === seat)) return false;
+    if (room.smacked.trick !== t.index) room.smacked = { trick: t.index, seats: [] };
+    if (room.smacked.seats.includes(seat)) return false;
+    room.smacked.seats.push(seat);
+    this.broadcast(room, { t: 'smack', seat });
+    return true;
+  }
+
+  private smack(c: Client) {
+    const room = this.roomOf(c);
+    if (!room?.game) return;
+    const seat = this.seatOf(room, c.id);
+    if (seat) this.trySmack(room, seat);
+  }
+
+  /** Computer players sometimes smack a strong winning card. */
+  private botSmack(room: Room, prev: GameState, s: GameState) {
+    const t = s.currentTrick;
+    if (!t || s.phase !== 'PLAYING' || t.plays.length <= (prev.currentTrick?.index === t.index ? prev.currentTrick.plays.length : 0)) return;
+    const last = t.plays[t.plays.length - 1];
+    if (room.seats[last.seat]) return; // a person — they smack themselves
+    const now = Date.now();
+    if (now - room.lastBotSmackAt < 6000) return;
+    const winning = resolveTrickWinner(t.plays, t.plays[0].card.suit, s.trump.revealed ? s.trump.suit : null) === last.seat;
+    if (!winning || (last.card.strength < 13 && !(s.trump.revealed && last.card.suit === s.trump.suit)) || serverRng() > 0.35) return;
+    room.lastBotSmackAt = now;
+    setTimeout(() => this.trySmack(room, last.seat), 350);
   }
 
   private throwEmoji(c: Client, to: Seat, e: string) {
@@ -464,7 +503,7 @@ export class RoomManager {
       this.rooms.set(r.code, {
         ...r, settings: sanitizeSettings(r.settings),
         members: new Map(r.members.map((m) => [m.id, { name: m.name, sockets: new Set(), lastSeen: now, awaySince: now }])),
-        timer: null, lastThrowAt: 0,
+        timer: null, lastThrowAt: 0, smacked: { trick: 0, seats: [] }, lastBotSmackAt: 0,
       });
     }
   }

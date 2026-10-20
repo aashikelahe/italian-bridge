@@ -166,6 +166,21 @@ describe('game server rooms', () => {
     expect(rm.rooms.has(code)).toBe(false);
   });
 
+  it('smack: only after playing a card in the current trick, once per trick, sent to everyone', () => {
+    const { rm, host, guest, code } = setup();
+    rm.handle(host, { t: 'start' });
+    rm.handle(guest, { t: 'smack' });
+    expect(guest.inbox.some((m) => m.t === 'smack')).toBe(false);
+    const people = { host, guest };
+    // Play until the guest has a card in the current trick.
+    playUntil(rm, code, people, () => !!rm.rooms.get(code)!.game?.currentTrick?.plays.some((p) => p.seat === 'A'));
+    const before = host.inbox.filter((m) => m.t === 'smack').length;
+    rm.handle(guest, { t: 'smack' });
+    rm.handle(guest, { t: 'smack' });
+    const got = host.inbox.filter((m): m is Extract<ServerMsg, { t: 'smack' }> => m.t === 'smack').slice(before);
+    expect(got.filter((m) => m.seat === 'A')).toHaveLength(1);
+  });
+
   it('joining a missing room says so', () => {
     const rm = new RoomManager();
     const c = fake('x');

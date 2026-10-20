@@ -2,13 +2,14 @@
  * Friends tables: emojis thrown at each other's faces. Purely cosmetic — never part of the
  * game state. Offline the computer players throw back; online they travel over the room.
  */
-import { useState, type CSSProperties } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import type { Seat } from '../engine/types';
 import type { PlayerView } from '../engine/view';
 import { SEATS } from '../engine/seating';
 import { relPos, type Pos } from './layout';
 import { useI18n, useSeatName } from './i18n';
-import { playSplat } from './sound';
+import { playSmack, playSplat } from './sound';
+import { partnerOf } from '../engine/seating';
 
 import { EMOJIS } from '../online/emojis';
 export { EMOJIS, KIND, MEAN, isEmoji } from '../online/emojis';
@@ -20,7 +21,8 @@ export interface Reaction {
   e: string;
 }
 
-const AT: Record<Pos, [number, number]> = { bottom: [50, 80], top: [50, 12], left: [9, 46], right: [91, 46] };
+/** Where each avatar sits on the felt, in percent (x, y). Matches the .av-* positions in styles.css. */
+export const AT: Record<Pos, [number, number]> = { bottom: [10, 70], top: [50, 11], left: [7, 38], right: [93, 38] };
 export const FLIGHT_MS = 2600;
 export const HIT_AT_MS = 1200;
 
@@ -82,4 +84,38 @@ export function useReactions() {
     window.setTimeout(() => setReactions((xs) => xs.filter((x) => x.id !== id)), FLIGHT_MS);
   };
   return { reactions, hits, add };
+}
+
+// ---------------------------------------------------------------- SMACK / বাড়ি
+
+export interface SmackEvent { id: number; seat: Seat }
+export const SMACK_MS = 1700;
+
+/** Smacks on the table: each one slams that player's card and sends the word to their partner. */
+export function useSmacks() {
+  const [smacks, setSmacks] = useState<SmackEvent[]>([]);
+  const add = useCallback((seat: Seat) => {
+    const id = Date.now() + Math.random();
+    playSmack();
+    setSmacks((xs) => [...xs.slice(-4), { id, seat }]);
+    window.setTimeout(() => setSmacks((xs) => xs.filter((x) => x.id !== id)), SMACK_MS);
+  }, []);
+  return { smacks, add };
+}
+
+export function SmackLayer({ me, smacks }: { me: Seat; smacks: SmackEvent[] }) {
+  const i = useI18n();
+  return (
+    <div className="smack-layer" aria-hidden>
+      {smacks.map((s) => {
+        const [fx, fy] = AT[relPos(me, s.seat)];
+        const [tx, ty] = AT[relPos(me, partnerOf(s.seat))];
+        return (
+          <span key={s.id} className="smack-word" style={{ ['--fx' as string]: `${fx}%`, ['--fy' as string]: `${fy}%`, ['--tx' as string]: `${tx}%`, ['--ty' as string]: `${ty}%` } as CSSProperties}>
+            <span>{i.lang === 'bn' ? 'বাড়ি!' : 'SMACK!'}</span>
+          </span>
+        );
+      })}
+    </div>
+  );
 }

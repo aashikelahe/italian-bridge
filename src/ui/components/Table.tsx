@@ -3,54 +3,77 @@ import type { Action, Card, GameState, Seat } from '../../engine/types';
 import type { PlayerView } from '../../engine/view';
 import { sortHand, SUIT_SYMBOL, type SortPref } from '../../engine/cards';
 import { currentWinningPlay } from '../../engine/rules';
+import { teamOf } from '../../engine/seating';
 import { CardBack, CardFace } from './Card';
 import type { Sweep } from '../useGameDriver';
 import { callOf, teamContractMode } from './ScorePanel';
 import { useI18n, useSeatName } from '../i18n';
 import { relPos } from '../layout';
 
-export function SeatPlate({ view, seat, devHand, won, hit, onPick }: {
-  view: PlayerView; seat: Seat; devHand?: Card[]; won?: boolean; hit?: boolean; onPick?: (seat: Seat) => void;
+const AVATAR_COLORS = ['#e0a33a', '#4fb3c9', '#d0607a', '#7bc96f', '#a98be0', '#e07b4f'];
+function colorFor(name: string, seat: Seat): string {
+  let h = seat.charCodeAt(0);
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  const first = Array.from(parts[0])[0] ?? '?';
+  const second = parts.length > 1 ? Array.from(parts[parts.length - 1])[0] ?? '' : '';
+  return (first + second).toUpperCase();
+}
+
+/**
+ * A player around the table: round avatar, name, trick badge (won/needed), call, dealer chip,
+ * turn glow, speech bubble for chat, and a small stack of card backs for opponents.
+ */
+export function Avatar({ view, seat, devHand, won, hit, bubble, onPick }: {
+  view: PlayerView; seat: Seat; devHand?: Card[]; won?: boolean; hit?: boolean; bubble?: string | null; onPick?: (seat: Seat) => void;
 }) {
   const i = useI18n();
   const seatName = useSeatName(view.players);
   const p = view.players[seat];
   const pos = relPos(view.seat, seat);
-  const fan = Math.min(p.handCount, 13);
-  const playing = ['PLAYING', 'MANDATORY_REVEAL'].includes(view.phase);
+  const name = seatName(seat);
+  const playing = ['PLAYING', 'MANDATORY_REVEAL', 'ROUND_RESULT'].includes(view.phase);
   const call = callOf(view, seat);
-  let callText = '';
-  if (view.phase === 'BIDDING' && call === null) callText = i.t('Bidding…');
-  else if (call === 'pass') callText = i.t('Passed');
-  else if (call !== null) callText = teamContractMode(view) && view.phase !== 'BIDDING' ? i.t('Call {n}', { n: call }) : i.t('Bid {n}', { n: call });
-  const target = !teamContractMode(view) && call !== null ? (call === 'pass' ? view.config.passTarget : call) : null;
-  const tricks = playing ? (target != null ? i.t('{a}/{b} tricks', { a: p.tricksWon, b: target }) : i.t('{n} tricks', { n: p.tricksWon })) : '';
+  const tc = teamContractMode(view);
+  // Trick badge: in team play, the team's tricks against the team's target.
+  let won_ = p.tricksWon;
+  let target: number | null = call === null ? null : call === 'pass' ? view.config.passTarget : call;
+  if (tc && view.teams) {
+    const t = view.teams.find((x) => x.id === teamOf(seat))!;
+    won_ = view.players[t.members[0]].tricksWon + view.players[t.members[1]].tricksWon;
+  }
+  if (!playing) target = call === null ? null : target;
+  const badge = playing ? `${i.num(won_)}/${target != null ? i.num(target) : '–'}` : call === null ? (view.phase === 'BIDDING' ? '…' : '') : call === 'pass' ? i.t('Pass') : i.num(call);
+  const isTurn = view.currentPlayer === seat;
   const Tag = onPick && seat !== view.seat ? 'button' : 'div';
+  const fan = Math.min(p.handCount, 13);
   return (
-    <div className={`seat seat-${pos} ${view.currentPlayer === seat ? 'active' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''}`} data-seat={seat}>
-      <Tag className={`plate ${Tag === 'button' ? 'pickable' : ''}`} {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: seatName(seat) }) } : {})}>
-        {won && <span className="won-badge" aria-hidden>{i.t('+1 trick')}</span>}
-        <span className="pname">{seatName(seat)}</span>
-        {view.dealer === seat && <span className="chip" title={i.t('Dealer')}>{i.lang === 'bn' ? 'ড' : 'D'}</span>}
-        {p.team && <span className={`team-dot team-${p.team}`} />}
-        <span className="pmeta">{[callText, tricks].filter(Boolean).join(' · ')}</span>
-        <span className="pcount">
-          {i.t(p.handCount === 1 ? '{n} card' : '{n} cards', { n: p.handCount })}{p.hasReservedCard ? i.t(' + 1 reserved') : ''}
-        </span>
+    <div className={`av av-${pos} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
+      <Tag className="av-plate" {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: name }) } : {})}>
+        <span className="av-face" style={{ ['--c' as string]: colorFor(p.name, seat) } as CSSProperties} aria-hidden>{initials(name)}</span>
+        {badge && <span className={`av-badge ${playing && target != null && won_ >= target ? 'made' : ''}`}>{badge}</span>}
+        {view.dealer === seat && <span className="av-dealer" title={i.t('Dealer')}>{i.lang === 'bn' ? 'ড' : 'D'}</span>}
+        <span className="av-name">{name}{view.trump.bidder === seat && <em className="av-bidder" title={i.t('bidder')}>★</em>}</span>
       </Tag>
-      {seat !== view.seat && (
-        <div className={`fan fan-${pos}`} aria-hidden>
+      {won && <span className="won-badge" aria-hidden>{i.t('+1 trick')}</span>}
+      {bubble && <span className="av-bubble" role="status">{bubble}</span>}
+      {seat !== view.seat && fan > 0 && (
+        <div className="av-cards" aria-label={i.t(fan === 1 ? '{n} card' : '{n} cards', { n: fan })}>
           {devHand
-            ? sortHand(devHand).map((c, k) => <CardFace key={c.id} card={c} size="sm" style={{ ['--i' as string]: k, ['--n' as string]: fan } as CSSProperties} />)
-            : Array.from({ length: fan }, (_, k) => <CardBack key={k} size="xs" style={{ ['--i' as string]: k, ['--n' as string]: fan } as CSSProperties} />)}
-          {p.hasReservedCard && <CardBack size="xs" className="reserved-back" />}
+            ? sortHand(devHand).map((c) => <CardFace key={c.id} card={c} size="sm" />)
+            : Array.from({ length: Math.min(fan, 5) }, (_, k) => <CardBack key={k} size="xs" />)}
+          {!devHand && <span className="av-count">{i.num(fan)}{p.hasReservedCard ? '+1' : ''}</span>}
         </div>
       )}
     </div>
   );
 }
 
-export function TrickArea({ view, sweeping }: { view: PlayerView; sweeping: Sweep | null }) {
+export function TrickArea({ view, sweeping, smackedSeat }: { view: PlayerView; sweeping: Sweep | null; smackedSeat: Seat | null }) {
   const i = useI18n();
   const seatName = useSeatName(view.players);
   const t = view.currentTrick;
@@ -60,7 +83,7 @@ export function TrickArea({ view, sweeping }: { view: PlayerView; sweeping: Swee
       {t?.plays.map((pl) => {
         const isWinner = t.winner === pl.seat || winning?.seat === pl.seat;
         return (
-          <div key={pl.card.id} className={`played from-${relPos(view.seat, pl.seat)} ${isWinner ? 'winning' : ''}`}>
+          <div key={pl.card.id} className={`played from-${relPos(view.seat, pl.seat)} ${isWinner ? 'winning' : ''} ${smackedSeat === pl.seat ? 'smacked' : ''}`}>
             <CardFace card={pl.card} size="md" />
           </div>
         );
@@ -92,14 +115,14 @@ export function HumanHand({ view, dispatch, sort }: { view: PlayerView; dispatch
       if (view.mustPlayTrump && view.trump.suit && view.hand.some((c) => c.suit === view.trump.suit)) {
         hint = i.t('The trump is shown — you must play a {suit} card.', { suit: i.suit(view.trump.suit) });
       }
-      if (selected) hint = i.t('Click the raised card again to play it.');
+      if (selected) hint = i.t('Tap the raised card again to play it.');
     } else if (view.currentPlayer) hint = i.t('Waiting for {p}…', { p: seatName(view.currentPlayer) });
   }
 
   return (
     <div className="hand-wrap">
       {hint && <p className={`hand-hint ${myTurn ? 'go' : ''}`} role="status">{hint}</p>}
-      <div className="hand" role="group" aria-label={i.t('Your hand')} style={{ ['--n' as string]: cards.length } as CSSProperties}>
+      <div className={`hand ${myTurn ? 'my-turn' : ''}`} role="group" aria-label={i.t('Your hand')} style={{ ['--n' as string]: Math.max(cards.length, 2) } as CSSProperties}>
         {cards.map((c, k) => {
           const legal = view.legalCardIds.includes(c.id);
           const reason = myTurn && !legal && led ? i.t('You must follow {suit}', { suit: i.suit(led) }) : '';

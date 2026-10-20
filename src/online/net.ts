@@ -65,7 +65,7 @@ export interface ServerState {
 }
 
 /** Connects while mounted. `name` is your table name; changing it renames you. */
-export function useServer(name: string, onThrow: (t: ThrowEvent) => void) {
+export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmack?: (seat: Seat) => void) {
   const [st, setSt] = useState<ServerState>({ status: 'connecting', me: null, room: null, view: null, error: null, left: null });
   const ws = useRef<WebSocket | null>(null);
   const queue = useRef<ClientMsg[]>([]);
@@ -73,6 +73,8 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void) {
   nameRef.current = name;
   const throwRef = useRef(onThrow);
   throwRef.current = onThrow;
+  const smackRef = useRef(onSmack);
+  smackRef.current = onSmack;
   const throwSeq = useRef(0);
   const ready = useRef(false);
 
@@ -116,6 +118,9 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void) {
             break;
           case 'throw':
             throwRef.current({ id: ++throwSeq.current, from: m.from, to: m.to, e: m.e });
+            break;
+          case 'smack':
+            smackRef.current?.(m.seat);
             break;
           case 'error':
             setSt((s) => ({ ...s, error: m.msg }));

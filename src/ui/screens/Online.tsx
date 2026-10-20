@@ -13,7 +13,8 @@ import type { Sweep } from '../useGameDriver';
 import type { PlayerView } from '../../engine/view';
 import { useI18n, I18nProvider, SeatNameProvider } from '../i18n';
 import { TableScreen } from './TableScreen';
-import { useReactions } from '../reactions';
+import { useReactions, useSmacks } from '../reactions';
+import type { TableChat } from './TableScreen';
 import { playCardTap, playSweep } from '../sound';
 
 interface Props {
@@ -21,6 +22,7 @@ interface Props {
   saveSettings: (s: Settings) => void;
   onBack: () => void;
   onToggleLang: () => void;
+  onToggleSound: () => void;
   /** Room code from an invite link. */
   inviteCode?: string | null;
 }
@@ -35,7 +37,8 @@ export function OnlineScreen(props: Props) {
   const name = cleanName(props.settings.onlineNick) || cleanName(props.settings.playerName) || 'Player';
   const { reactions, hits, add } = useReactions();
   const onThrow = useCallback((t: ThrowEvent) => add({ from: t.from, to: t.to, e: t.e }), [add]);
-  const srv = useServer(name, onThrow);
+  const sm = useSmacks();
+  const srv = useServer(name, onThrow, sm.add);
   const askedInvite = useRef(false);
 
   // Invite links join automatically once connected (if we already know your name).
@@ -69,7 +72,7 @@ export function OnlineScreen(props: Props) {
   if (room && me && room.status !== 'lobby' && mySeat && srv.view) {
     return (
       <OnlineTable {...props} room={room} me={me} view={srv.view} send={srv.send} error={srv.error} clearError={srv.clearError}
-        reactions={reactions} hits={hits} banner={banner} />
+        reactions={reactions} hits={hits} banner={banner} smacks={sm.smacks} />
     );
   }
   if (room && me) {
@@ -322,6 +325,7 @@ function useServerViewEffects(view: PlayerView, pace: Pace, anim: Settings['anim
 function OnlineTable(props: Props & {
   room: RoomInfo; me: string; view: PlayerView; send: Send; error: string | null; clearError: () => void;
   reactions: ReturnType<typeof useReactions>['reactions']; hits: ReturnType<typeof useReactions>['hits']; banner: string | null;
+  smacks: ReturnType<typeof useSmacks>['smacks'];
 }) {
   const { room, me, view, send, settings } = props;
   const friends = room.settings.mode === 'team' && room.settings.tableType === 'friends';
@@ -346,11 +350,18 @@ function OnlineTable(props: Props & {
 function TableWithNotices(props: Props & {
   room: RoomInfo; me: string; view: PlayerView; send: Send; error: string | null; clearError: () => void;
   reactions: ReturnType<typeof useReactions>['reactions']; hits: ReturnType<typeof useReactions>['hits']; banner: string | null;
+  smacks: ReturnType<typeof useSmacks>['smacks'];
   friends: boolean; sweeping: Sweep | null; away: Seat[];
 }) {
   const i = useI18n();
   const { room, me, view, send } = props;
   const awayNames = props.away.map((s) => room.members.find((m) => m.id === room.seats[s])?.name).filter(Boolean).join(', ');
+  const chat = useMemo<TableChat>(() => ({
+    messages: room.chat,
+    me,
+    onSend: (text) => send({ t: 'chat', text }),
+    seatOf: (id) => SEATS.find((s) => room.seats[s] === id) ?? null,
+  }), [room.chat, room.seats, me, send]);
   const notice = props.banner ?? (awayNames ? i.t('{p} is away — the computer is playing for them until they come back.', { p: awayNames }) : null);
   return (
     <TableScreen
@@ -367,7 +378,11 @@ function TableWithNotices(props: Props & {
       hits={props.hits}
       onThrow={(to, e) => send({ t: 'throw', to, e })}
       onToggleLang={props.onToggleLang}
-      side={<Chat room={room} me={me} send={send} compact />}
+      chat={chat}
+      smacks={props.smacks}
+      onSmack={() => send({ t: 'smack' })}
+      onToggleSound={props.onToggleSound}
+      exitLabel={i.t('Leave room')}
       notice={notice}
     />
   );

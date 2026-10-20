@@ -6,7 +6,8 @@ import { storage, type Settings } from '../storage';
 import { teamOf, areOpponents } from '../../engine/seating';
 import { TableScreen } from './TableScreen';
 import { I18nProvider } from '../i18n';
-import { KIND, MEAN, useReactions } from '../reactions';
+import { KIND, MEAN, useReactions, useSmacks } from '../reactions';
+import { currentWinningPlay } from '../../engine/rules';
 
 interface Props {
   initial: GameState;
@@ -16,6 +17,7 @@ interface Props {
   onExit: () => void;
   onNewGame: () => void;
   onToggleLang: () => void;
+  onToggleSound: () => void;
 }
 
 function recordStats(s: GameState, prev: GameState) {
@@ -92,7 +94,31 @@ export function useAIThrows(state: GameState, enabled: boolean, isAI: (s: Seat) 
   }, [enabled, isAI, fire]);
 }
 
-export function GameScreen({ initial, difficulty, friends, settings, onExit, onNewGame, onToggleLang }: Props) {
+/** Computer players sometimes smack a strong card that is winning the trick. */
+function useAISmacks(state: GameState, add: (s: Seat) => void) {
+  const last = useRef(0);
+  const seen = useRef('');
+  useEffect(() => {
+    const t = state.currentTrick;
+    const n = t?.plays.length ?? 0;
+    const key = t ? `${t.index}:${n}` : '';
+    if (key === seen.current) return;
+    seen.current = key;
+    if (!t) return;
+    if (n === 0) return;
+    const play = t.plays[n - 1];
+    if (state.players[play.seat].type !== 'ai') return;
+    const trump = state.trump.revealed ? state.trump.suit : null;
+    const win = currentWinningPlay(t.plays, trump);
+    if (win?.seat !== play.seat) return;
+    const strong = play.card.strength >= 13 || (trump !== null && play.card.suit === trump);
+    if (!strong || Math.random() > 0.3 || Date.now() - last.current < 6000) return;
+    last.current = Date.now();
+    window.setTimeout(() => add(play.seat), 350);
+  }, [state, add]);
+}
+
+export function GameScreen({ initial, difficulty, friends, settings, onExit, onNewGame, onToggleLang, onToggleSound }: Props) {
   const onChange = useCallback((s: GameState, prev: GameState) => {
     recordStats(s, prev);
     storage.saveGame(s.phase === 'MATCH_OVER' ? null : { state: s, difficulty, friends, savedAt: Date.now() });
@@ -101,6 +127,8 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
   const { reactions, hits, add } = useReactions();
   const isAI = useCallback((s: Seat) => d.state.players[s].type === 'ai', [d.state.players]);
   const answer = useAIThrows(d.state, friends, isAI, add);
+  const sm = useSmacks();
+  useAISmacks(d.state, sm.add);
 
   return (
     <I18nProvider lang={settings.lang} friends={friends}>
@@ -121,6 +149,9 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
         hits={hits}
         onThrow={(to, e) => { add({ from: HUMAN, to, e }); answer(HUMAN, to, e); }}
         onToggleLang={onToggleLang}
+        onToggleSound={onToggleSound}
+        smacks={sm.smacks}
+        onSmack={() => sm.add(HUMAN)}
       />
     </I18nProvider>
   );

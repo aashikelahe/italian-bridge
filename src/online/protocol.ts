@@ -45,6 +45,7 @@ export type ClientMsg =
   | { t: 'start' }
   | { t: 'act'; action: Action }
   | { t: 'throw'; to: Seat; e: string }
+  | { t: 'smack' }
   | { t: 'lobby' }
   | { t: 'close' }
   | { t: 'ping' };
@@ -54,6 +55,7 @@ export type ServerMsg =
   | { t: 'room'; room: RoomInfo }
   | { t: 'view'; view: PlayerView }
   | { t: 'throw'; from: Seat; to: Seat; e: string }
+  | { t: 'smack'; seat: Seat }
   | { t: 'error'; msg: string }
   | { t: 'left'; reason: 'left' | 'closed' | 'missing' }
   | { t: 'pong' };

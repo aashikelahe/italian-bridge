@@ -53,6 +53,7 @@ export function App() {
 
   const saveSettings = (s: Settings) => { setSettingsState(s); storage.saveSettings(s); };
   const toggleLang = () => saveSettings({ ...settings, lang: settings.lang === 'bn' ? 'en' : 'bn' });
+  const toggleSound = () => saveSettings({ ...settings, sound: !settings.sound });
 
   const start = (s: Settings) => {
     saveSettings(s);
@@ -78,11 +79,12 @@ export function App() {
           onExit={exitToMenu}
           onNewGame={() => setScreen('setup')}
           onToggleLang={toggleLang}
+          onToggleSound={toggleSound}
         />
       ) : null;
       break;
     case 'online':
-      body = <OnlineScreen settings={settings} saveSettings={saveSettings} onBack={() => setScreen('menu')} onToggleLang={toggleLang} inviteCode={invite} />;
+      body = <OnlineScreen settings={settings} saveSettings={saveSettings} onBack={() => setScreen('menu')} onToggleLang={toggleLang} onToggleSound={toggleSound} inviteCode={invite} />;
       break;
     case 'setup':
       body = <SetupScreen settings={settings} onStart={start} onBack={() => setScreen('menu')} />;
