@@ -1,0 +1,131 @@
+import { useEffect, useState, type CSSProperties } from 'react';
+import type { Action, Card, GameState, Seat } from '../../engine/types';
+import type { PlayerView } from '../../engine/view';
+import { sortHand, SUIT_SYMBOL, type SortPref } from '../../engine/cards';
+import { currentWinningPlay } from '../../engine/rules';
+import { CardBack, CardFace } from './Card';
+import type { Sweep } from '../useGameDriver';
+import { callOf, teamContractMode } from './ScorePanel';
+import { useI18n, useSeatName } from '../i18n';
+import { relPos } from '../layout';
+
+export function SeatPlate({ view, seat, devHand, won, hit, onPick }: {
+  view: PlayerView; seat: Seat; devHand?: Card[]; won?: boolean; hit?: boolean; onPick?: (seat: Seat) => void;
+}) {
+  const i = useI18n();
+  const seatName = useSeatName(view.players);
+  const p = view.players[seat];
+  const pos = relPos(view.seat, seat);
+  const fan = Math.min(p.handCount, 13);
+  const playing = ['PLAYING', 'MANDATORY_REVEAL'].includes(view.phase);
+  const call = callOf(view, seat);
+  let callText = '';
+  if (view.phase === 'BIDDING' && call === null) callText = i.t('Bidding…');
+  else if (call === 'pass') callText = i.t('Passed');
+  else if (call !== null) callText = teamContractMode(view) && view.phase !== 'BIDDING' ? i.t('Call {n}', { n: call }) : i.t('Bid {n}', { n: call });
+  const target = !teamContractMode(view) && call !== null ? (call === 'pass' ? view.config.passTarget : call) : null;
+  const tricks = playing ? (target != null ? i.t('{a}/{b} tricks', { a: p.tricksWon, b: target }) : i.t('{n} tricks', { n: p.tricksWon })) : '';
+  const Tag = onPick && seat !== view.seat ? 'button' : 'div';
+  return (
+    <div className={`seat seat-${pos} ${view.currentPlayer === seat ? 'active' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''}`} data-seat={seat}>
+      <Tag className={`plate ${Tag === 'button' ? 'pickable' : ''}`} {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: seatName(seat) }) } : {})}>
+        {won && <span className="won-badge" aria-hidden>{i.t('+1 trick')}</span>}
+        <span className="pname">{seatName(seat)}</span>
+        {view.dealer === seat && <span className="chip" title={i.t('Dealer')}>{i.lang === 'bn' ? 'ড' : 'D'}</span>}
+        {p.team && <span className={`team-dot team-${p.team}`} />}
+        <span className="pmeta">{[callText, tricks].filter(Boolean).join(' · ')}</span>
+        <span className="pcount">
+          {i.t(p.handCount === 1 ? '{n} card' : '{n} cards', { n: p.handCount })}{p.hasReservedCard ? i.t(' + 1 reserved') : ''}
+        </span>
+      </Tag>
+      {seat !== view.seat && (
+        <div className={`fan fan-${pos}`} aria-hidden>
+          {devHand
+            ? sortHand(devHand).map((c, k) => <CardFace key={c.id} card={c} size="sm" style={{ ['--i' as string]: k, ['--n' as string]: fan } as CSSProperties} />)
+            : Array.from({ length: fan }, (_, k) => <CardBack key={k} size="xs" style={{ ['--i' as string]: k, ['--n' as string]: fan } as CSSProperties} />)}
+          {p.hasReservedCard && <CardBack size="xs" className="reserved-back" />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TrickArea({ view, sweeping }: { view: PlayerView; sweeping: Sweep | null }) {
+  const i = useI18n();
+  const seatName = useSeatName(view.players);
+  const t = view.currentTrick;
+  const winning = t && t.plays.length > 0 && t.plays.length < 4 ? currentWinningPlay(t.plays, view.trump.revealed ? view.trump.suit : null) : null;
+  return (
+    <div className={`trick ${sweeping ? `${sweeping.stage} to-${relPos(view.seat, sweeping.seat)}` : ''}`} aria-live="polite" aria-label={i.t('Current trick')}>
+      {t?.plays.map((pl) => {
+        const isWinner = t.winner === pl.seat || winning?.seat === pl.seat;
+        return (
+          <div key={pl.card.id} className={`played from-${relPos(view.seat, pl.seat)} ${isWinner ? 'winning' : ''}`}>
+            <CardFace card={pl.card} size="md" />
+          </div>
+        );
+      })}
+      {t && t.plays.length === 0 && (
+        <p className="trick-hint">{t.leader === view.seat ? i.t('Your lead') : i.t('{p} leads', { p: seatName(t.leader) })}</p>
+      )}
+      {t?.winner && <p className="trick-win">{t.winner === view.seat ? i.t('You win the trick') : i.t('{p} wins the trick', { p: seatName(t.winner) })}</p>}
+    </div>
+  );
+}
+
+export function HumanHand({ view, dispatch, sort }: { view: PlayerView; dispatch: (a: Action) => string | null; sort: SortPref }) {
+  const i = useI18n();
+  const seatName = useSeatName(view.players);
+  const [selected, setSelected] = useState<string | null>(null);
+  const myTurn = view.legalCardIds.length > 0;
+  useEffect(() => { if (!myTurn) setSelected(null); }, [myTurn]);
+  const cards = sortHand(view.hand, sort);
+  const led = view.currentTrick?.ledSuit;
+  const play = (id: string) => { setSelected(null); dispatch({ type: 'PLAY_CARD', seat: view.seat, cardId: id }); };
+
+  let hint = '';
+  if (view.phase === 'PLAYING') {
+    if (myTurn) {
+      hint = !led ? i.t('Your lead — choose any card.')
+        : view.hand.some((c) => c.suit === led) ? i.t('Your turn — follow {suit} {sym}.', { suit: i.suit(led), sym: SUIT_SYMBOL[led] })
+        : i.t('You have no {suit} — play any card.', { suit: i.suit(led) });
+      if (view.mustPlayTrump && view.trump.suit && view.hand.some((c) => c.suit === view.trump.suit)) {
+        hint = i.t('The trump is shown — you must play a {suit} card.', { suit: i.suit(view.trump.suit) });
+      }
+      if (selected) hint = i.t('Click the raised card again to play it.');
+    } else if (view.currentPlayer) hint = i.t('Waiting for {p}…', { p: seatName(view.currentPlayer) });
+  }
+
+  return (
+    <div className="hand-wrap">
+      {hint && <p className={`hand-hint ${myTurn ? 'go' : ''}`} role="status">{hint}</p>}
+      <div className="hand" role="group" aria-label={i.t('Your hand')} style={{ ['--n' as string]: cards.length } as CSSProperties}>
+        {cards.map((c, k) => {
+          const legal = view.legalCardIds.includes(c.id);
+          const reason = myTurn && !legal && led ? i.t('You must follow {suit}', { suit: i.suit(led) }) : '';
+          return (
+            <button
+              key={c.id}
+              className={`card-btn in-hand ${myTurn ? (legal ? 'legal' : 'illegal') : ''} ${selected === c.id ? 'selected' : ''}`}
+              style={{ ['--i' as string]: k } as CSSProperties}
+              disabled={!myTurn || !legal}
+              aria-pressed={selected === c.id}
+              aria-label={`${i.cardName(c)}${reason ? ` — ${reason}` : ''}`}
+              title={reason || undefined}
+              onClick={() => (selected === c.id ? play(c.id) : setSelected(c.id))}
+              onDoubleClick={() => play(c.id)}
+            >
+              <CardFace card={c} size="lg" />
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function devHands(state: GameState, me: Seat): Partial<Record<Seat, Card[]>> {
+  const out: Partial<Record<Seat, Card[]>> = {};
+  for (const s of ['A', 'B', 'C', 'D'] as Seat[]) if (s !== me) out[s] = state.players[s].hand;
+  return out;
+}

@@ -1,0 +1,13 @@
+# Render Blueprint: one free web service that serves the game and runs online rooms.
+services:
+  - type: web
+    name: italian-bridge
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
