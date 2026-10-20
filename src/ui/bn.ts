@@ -317,7 +317,7 @@ export const BN: Record<string, string> = {
   'Room code': 'রুম কোড',
   'Join': 'যোগ দিন',
   'You are invited to room {c}': 'আপনাকে {c} রুমে ডাকা হয়েছে',
-  'Online play needs the game server. Open the game from its website address instead of a saved file.': 'অনলাইনে খেলতে গেম সার্ভার লাগে। সংরক্ষিত ফাইল নয়, ওয়েবসাইটের ঠিকানা থেকে খেলাটি খুলুন।',
+  'Online play is not switched on for this copy of the game yet. You can still play against the computer.': 'এই সংস্করণে অনলাইন খেলা এখনো চালু হয়নি। কম্পিউটারের সাথে খেলতে পারবেন।',
   'Connecting to the game server… (a sleeping server can take up to a minute to wake up)': 'গেম সার্ভারে সংযোগ হচ্ছে… (ঘুমন্ত সার্ভার জাগতে এক মিনিট পর্যন্ত লাগতে পারে)',
   'Connection lost. Reconnecting…': 'সংযোগ বিচ্ছিন্ন। আবার সংযোগ হচ্ছে…',
   'Type the name your friends will see.': 'বন্ধুরা যে নাম দেখবে সেটি লিখুন।',

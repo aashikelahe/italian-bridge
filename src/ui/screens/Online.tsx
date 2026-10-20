@@ -53,7 +53,7 @@ export function OnlineScreen(props: Props) {
     return (
       <div className="page">
         <header className="page-head"><button className="btn ghost small" onClick={props.onBack}>{i.t('Back')}</button><h1>{i.t('Play online')}</h1></header>
-        <p>{i.t('Online play needs the game server. Open the game from its website address instead of a saved file.')}</p>
+        <p>{i.t('Online play is not switched on for this copy of the game yet. You can still play against the computer.')}</p>
       </div>
     );
   }

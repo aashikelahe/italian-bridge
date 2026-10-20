@@ -29,10 +29,25 @@ export function myToken(): string {
   return memToken;
 }
 
-/** Where the game server is: VITE_SERVER_URL at build time, otherwise the site the game was loaded from. */
+/**
+ * Where the game server is:
+ * 1. a <meta name="ib-server" content="https://…"> tag in the page (used when the game is copied onto
+ *    another website, e.g. aashik.xyz); an empty content means online play is not set up there yet;
+ * 2. VITE_SERVER_URL at build time;
+ * 3. otherwise the site the game was loaded from (the normal case on Render).
+ */
 export function serverUrl(): string | null {
+  const toWs = (u: string) => {
+    const base = u.trim().replace(/^http/, 'ws').replace(/\/+$/, '');
+    return base.endsWith('/ws') ? base : `${base}/ws`;
+  };
+  const meta = document.querySelector('meta[name="ib-server"]');
+  if (meta) {
+    const v = meta.getAttribute('content')?.trim() ?? '';
+    return /^(https?|wss?):\/\//.test(v) ? toWs(v) : null;
+  }
   const configured = (import.meta.env.VITE_SERVER_URL as string | undefined)?.trim();
-  if (configured) return configured.replace(/^http/, 'ws').replace(/\/?$/, '') + (configured.endsWith('/ws') ? '' : '/ws');
+  if (configured) return toWs(configured);
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return null;
   return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 }

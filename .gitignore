@@ -2,5 +2,6 @@ node_modules/
 dist/
 dist-server/
 dist-single/
+dist-website/
 *.log
 rooms.json

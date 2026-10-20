@@ -62,6 +62,15 @@ Build command `npm install --include=dev && npm run build`, Start command `npm s
 Upload the changed files to the same GitHub repository (**Add file → Upload files**, then **Commit**).
 Render rebuilds and goes live again on its own in a few minutes.
 
+## The copy on aashik.xyz
+
+The website has a copy of the game at `https://aashik.xyz/italian-bridge/` (linked from the Games page).
+Computer play works there on its own. To switch on online rooms there, the page needs the Render address:
+in the `Aashik.xyz` repository, open `italian-bridge/index.html` and fill in
+`<meta name="ib-server" content="https://italian-bridge-xxxx.onrender.com" />`.
+To rebuild that copy after game changes: `IB_SERVER_URL=https://italian-bridge-xxxx.onrender.com npm run build:website`
+and copy `dist-website/index.html` to `italian-bridge/index.html` in the website repository.
+
 ## Optional: use your own domain
 
 To use an address like `bridge.aashik.xyz`: in Render open the service → **Settings → Custom Domains → Add**,
