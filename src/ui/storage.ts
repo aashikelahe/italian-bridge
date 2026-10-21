@@ -21,7 +21,17 @@ export interface Settings {
   /** Name used when playing online. */
   onlineNick: string;
   rules: RuleConfig;
+  /** Table look. */
+  theme: TableTheme;
+  cardBack: CardBackStyle;
+  /** Vibrate on your turn and on smacks (phones). */
+  haptics: boolean;
 }
+
+export type TableTheme = 'emerald' | 'royal' | 'crimson' | 'midnight';
+export type CardBackStyle = 'ruby' | 'navy' | 'gold' | 'carbon';
+export const TABLE_THEMES: TableTheme[] = ['emerald', 'royal', 'crimson', 'midnight'];
+export const CARD_BACKS: CardBackStyle[] = ['ruby', 'navy', 'gold', 'carbon'];
 
 export const DEFAULT_SETTINGS: Settings = {
   playerName: 'You',
@@ -37,6 +47,9 @@ export const DEFAULT_SETTINGS: Settings = {
   tableType: 'regular',
   onlineNick: '',
   rules: DEFAULT_RULES,
+  theme: 'emerald',
+  cardBack: 'ruby',
+  haptics: true,
 };
 
 export interface Stats {
@@ -84,11 +97,20 @@ function write(key: string, value: unknown) {
 export const storage = {
   loadSettings(): Settings {
     const s = read<Partial<Settings>>(KEY.settings);
-    return { ...DEFAULT_SETTINGS, ...(s ?? {}), rules: { ...DEFAULT_RULES, ...(s?.rules ?? {}) }, teamNames: { ...DEFAULT_SETTINGS.teamNames, ...(s?.teamNames ?? {}) } };
+    return { ...DEFAULT_SETTINGS, ...(s ?? {}), rules: {
+      ...DEFAULT_RULES, ...(s?.rules ?? {}),
+      // The core numbers are not house rules: always the current ones.
+      minBid: DEFAULT_RULES.minBid, maxBid: DEFAULT_RULES.maxBid, bonusBid: DEFAULT_RULES.bonusBid, bonusPoints: DEFAULT_RULES.bonusPoints,
+      passTarget: DEFAULT_RULES.passTarget, passPoints: DEFAULT_RULES.passPoints,
+    }, teamNames: { ...DEFAULT_SETTINGS.teamNames, ...(s?.teamNames ?? {}) } };
   },
   saveSettings: (s: Settings) => write(KEY.settings, s),
   loadGame: (): SavedGame | null => {
     const g = read<SavedGame>(KEY.save);
+    // Games saved before the 10 (Bonus) rule switch to it.
+    if (g?.state?.config && g.state.config.bonusBid === undefined) {
+      g.state.config = { ...g.state.config, maxBid: 10, bonusBid: 10, bonusPoints: 13 };
+    }
     return g && g.state?.version === 1 && g.state.phase !== 'MATCH_OVER' ? g : null;
   },
   saveGame: (g: SavedGame | null) => write(KEY.save, g),

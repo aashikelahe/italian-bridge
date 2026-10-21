@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { botEmoji, levelOf, picFromAvatar, useProfile } from '../profile';
+import { SeatExtraProvider } from '../seatExtras';
 import type { Difficulty, GameState, Seat } from '../../engine/types';
 import { useGameDriver, HUMAN } from '../useGameDriver';
 import { devHands } from '../components/Table';
@@ -130,8 +132,14 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
   const sm = useSmacks();
   useAISmacks(d.state, sm.add);
 
+  const profile = useProfile();
+  const level = useMemo(() => levelOf(storage.loadStats()).level, []);
+  const extra = useCallback((seat: Seat) => (seat === HUMAN
+    ? { pic: picFromAvatar(profile.avatar), handle: profile.handle || null, level }
+    : { pic: { emoji: botEmoji(d.state.players[seat].name) } }), [profile.avatar, profile.handle, level, d.state.players]);
   return (
     <I18nProvider lang={settings.lang} friends={friends}>
+      <SeatExtraProvider resolve={extra}>
       <TableScreen
         view={d.view}
         dispatch={d.dispatch}
@@ -153,6 +161,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
         smacks={sm.smacks}
         onSmack={() => sm.add(HUMAN)}
       />
+      </SeatExtraProvider>
     </I18nProvider>
   );
 }

@@ -51,7 +51,7 @@ export function BidPanel({ view, dispatch }: { view: PlayerView; dispatch: Dispa
         {view.bidding.history.map((h, k) => (
           <li key={k}>
             <b>{seatName(h.seat)}</b>{' '}
-            {h.action === 'bid' ? i.t(h.amount === minBid ? 'bids {n} (Small)' : 'bids {n}', { n: h.amount! })
+            {h.action === 'bid' ? i.t(h.amount === minBid ? 'bids {n} (Small)' : h.amount === view.config.bonusBid ? 'bids {n} (Bonus)' : 'bids {n}', { n: h.amount! })
               : h.action === 'forced' ? i.t(h.seat === view.dealer ? 'must call {n} as dealer' : 'must call {n}', { n: h.amount! })
               : h.action === 'auto-pass' ? i.t('passes (no higher bid possible)') : i.t('passes')}
           </li>
@@ -74,8 +74,8 @@ export function BidPanel({ view, dispatch }: { view: PlayerView; dispatch: Dispa
           )}
           <div className="bid-buttons">
             {bids.map((b) => (
-              <button key={b} className="btn bid" disabled={high != null && b <= high} onClick={() => dispatch({ type: 'BID', seat: view.seat, amount: b })}>
-                {i.num(b)}{b === minBid && <small>{i.t('Small')}</small>}
+              <button key={b} className={`btn bid ${b === view.config.bonusBid ? 'bonus' : ''}`} title={b === view.config.bonusBid ? i.t('Make it and score {p}; miss it and lose {n}.', { p: view.config.bonusPoints, n: b }) : undefined} disabled={high != null && b <= high} onClick={() => dispatch({ type: 'BID', seat: view.seat, amount: b })}>
+                {i.num(b)}{b === minBid && <small>{i.t('Small')}</small>}{b === view.config.bonusBid && <small>{i.t('Bonus')} +{i.num(view.config.bonusPoints)}</small>}
               </button>
             ))}
             <button className="btn ghost pass" onClick={() => dispatch({ type: 'PASS', seat: view.seat })}>{i.t('Pass')}</button>

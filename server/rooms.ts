@@ -17,6 +17,7 @@ import {
   type ChatMsg, type ClientMsg, type RoomInfo, type RoomSettings, type ServerMsg,
 } from '../src/online/protocol';
 import { KIND, MEAN, isEmoji } from '../src/online/emojis';
+import { Profiles } from './profiles';
 
 /** Server randomness: crypto-strength, never Math.random. */
 export const serverRng: Rng = () => randomBytes(4).readUInt32BE(0) / 4294967296;
@@ -28,7 +29,7 @@ export interface Client {
   send(msg: ServerMsg): void;
 }
 
-interface Member { name: string; sockets: Set<Client>; lastSeen: number; awaySince: number | null }
+interface Member { name: string; sockets: Set<Client>; lastSeen: number; awaySince: number | null; voice?: boolean; muted?: boolean }
 
 export interface Room {
   code: string;
@@ -55,6 +56,7 @@ const CHAT_KEEP = 100;
 
 export class RoomManager {
   rooms = new Map<string, Room>();
+  profiles = new Profiles();
   /** Set by the server to persist changes (optional). */
   onDirty: () => void = () => undefined;
 
@@ -73,6 +75,9 @@ export class RoomManager {
       case 'act': return this.act(c, m.action);
       case 'throw': return this.throwEmoji(c, m.to, m.e);
       case 'smack': return this.smack(c);
+      case 'profile': return this.setProfile(c, m.handle, m.avatar, m.level);
+      case 'voice': return this.voice(c, !!m.on, !!m.muted);
+      case 'rtc': return this.rtc(c, String(m.to ?? ''), m.data);
       case 'lobby': return this.backToLobby(c);
       case 'close': return this.close(c);
       default: return undefined;
@@ -140,7 +145,7 @@ export class RoomManager {
     const m = room.members.get(c.id);
     if (!m) return;
     m.sockets.delete(c);
-    if (m.sockets.size === 0) { m.awaySince = Date.now(); m.lastSeen = Date.now(); }
+    if (m.sockets.size === 0) { m.awaySince = Date.now(); m.lastSeen = Date.now(); m.voice = false; }
     this.broadcastRoom(room);
     this.pump(room);
   }
@@ -150,7 +155,7 @@ export class RoomManager {
     c.room = null;
     if (!room) return;
     const m = room.members.get(c.id);
-    if (m) m.sockets.delete(c);
+    if (m) { m.sockets.delete(c); if (m.sockets.size === 0) m.voice = false; }
     // Leaving for real (not just a dropped connection): free your lobby seat and your membership.
     if (!m || m.sockets.size === 0) {
       if (room.status === 'lobby') {
@@ -381,10 +386,41 @@ export class RoomManager {
     setTimeout(() => this.broadcast(room, { t: 'throw', from, to, e }), delay);
   }
 
-  /** SMACK / বাড়ি: once per trick, only after playing your card to it. */
+  /** Save a player's ID and picture; everyone in their room sees the change. */
+  private setProfile(c: Client, handle: string, avatar: string | null, level: number) {
+    const error = this.profiles.set(c.id, handle, avatar, level);
+    c.send({ t: 'profile', ok: !error, handle: String(handle ?? ''), ...(error ? { error } : {}) });
+    if (error) return;
+    this.onDirty();
+    const room = this.roomOf(c);
+    if (room) this.broadcastRoom(room);
+  }
+
+  /** Join or leave the room's voice chat, or mute. */
+  private voice(c: Client, on: boolean, muted: boolean) {
+    const room = this.roomOf(c);
+    const m = room?.members.get(c.id);
+    if (!room || !m) return;
+    if (m.voice === on && m.muted === muted) return;
+    m.voice = on;
+    m.muted = on && muted;
+    this.broadcastRoom(room);
+  }
+
+  /** Voice call set-up messages between two people in the same room's voice chat (relayed, never read). */
+  private rtc(c: Client, to: string, data: unknown) {
+    const room = this.roomOf(c);
+    if (!room || to === c.id) return;
+    const from = room.members.get(c.id);
+    const target = room.members.get(to);
+    if (!from?.voice || !target?.voice) return;
+    for (const s of target.sockets) s.send({ t: 'rtc', from: c.id, data });
+  }
+
+  /** SMACK / বাড়ি: once per trick, right after playing your card — until the next player plays. */
   private trySmack(room: Room, seat: Seat): boolean {
     const t = room.game?.currentTrick;
-    if (!t || room.game?.phase !== 'PLAYING' || !t.plays.some((p) => p.seat === seat)) return false;
+    if (!t || room.game?.phase !== 'PLAYING' || t.plays.length === 0 || t.plays[t.plays.length - 1].seat !== seat) return false;
     if (room.smacked.trick !== t.index) room.smacked = { trick: t.index, seats: [] };
     if (room.smacked.seats.includes(seat)) return false;
     room.smacked.seats.push(seat);
@@ -448,7 +484,10 @@ export class RoomManager {
       status: room.status,
       settings: room.settings,
       seats: { ...room.seats },
-      members: [...room.members.entries()].map(([id, m]) => ({ id, name: m.name, online: m.sockets.size > 0 })),
+      members: [...room.members.entries()].map(([id, m]) => {
+        const p = this.profiles.get(id);
+        return { id, name: m.name, online: m.sockets.size > 0, handle: p?.handle ?? null, pic: p?.pic ?? null, level: p?.level ?? 1, voice: !!m.voice, muted: !!m.muted };
+      }),
       chat: room.chat.slice(-CHAT_KEEP),
       autoplay,
     };
@@ -517,7 +556,7 @@ export function sanitizeSettings(raw: Partial<RoomSettings> | undefined): RoomSe
     if (typeof given[k] === typeof DEFAULT_RULES[k]) (rules as unknown as Record<string, unknown>)[k] = given[k];
   }
   // Keep the core numbers fixed; they are not house rules.
-  rules.minBid = 7; rules.maxBid = 13; rules.passTarget = 5; rules.passPoints = 5; rules.cutter = 'beforeDealer';
+  rules.minBid = 7; rules.maxBid = 10; rules.bonusBid = 10; rules.bonusPoints = 13; rules.passTarget = 5; rules.passPoints = 5; rules.cutter = 'beforeDealer';
   const mode = r.mode === 'individual' ? 'individual' : 'team';
   return {
     mode,

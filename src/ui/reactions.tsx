@@ -8,7 +8,7 @@ import type { PlayerView } from '../engine/view';
 import { SEATS } from '../engine/seating';
 import { relPos, type Pos } from './layout';
 import { useI18n, useSeatName } from './i18n';
-import { playSmack, playSplat } from './sound';
+import { buzz, playSmack, playSplat, playWhoosh } from './sound';
 import { partnerOf } from '../engine/seating';
 
 import { EMOJIS } from '../online/emojis';
@@ -22,7 +22,7 @@ export interface Reaction {
 }
 
 /** Where each avatar sits on the felt, in percent (x, y). Matches the .av-* positions in styles.css. */
-export const AT: Record<Pos, [number, number]> = { bottom: [10, 70], top: [50, 11], left: [7, 38], right: [93, 38] };
+export const AT: Record<Pos, [number, number]> = { bottom: [50, 72], top: [50, 11], left: [6, 36], right: [94, 36] };
 export const FLIGHT_MS = 2600;
 export const HIT_AT_MS = 1200;
 
@@ -79,6 +79,7 @@ export function useReactions() {
   const add = (r: Omit<Reaction, 'id'>) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     setReactions((xs) => [...xs.slice(-12), { ...r, id }]);
+    playWhoosh();
     window.setTimeout(() => { setHits((h) => ({ ...h, [r.to]: Date.now() })); playSplat(); }, HIT_AT_MS);
     window.setTimeout(() => setHits((h) => ({ ...h, [r.to]: undefined })), HIT_AT_MS + 700);
     window.setTimeout(() => setReactions((xs) => xs.filter((x) => x.id !== id)), FLIGHT_MS);
@@ -97,6 +98,7 @@ export function useSmacks() {
   const add = useCallback((seat: Seat) => {
     const id = Date.now() + Math.random();
     playSmack();
+    window.setTimeout(() => buzz([30, 40, 70]), 180);
     setSmacks((xs) => [...xs.slice(-4), { id, seat }]);
     window.setTimeout(() => setSmacks((xs) => xs.filter((x) => x.id !== id)), SMACK_MS);
   }, []);

@@ -4,17 +4,19 @@ import { DEFAULT_RULES } from './config';
 /**
  * Round score for one player.
  * - Numeric bid N: +N if tricksWon >= N, otherwise -N. Overtricks add nothing.
+ * - The bonus bid (default 10) scores bonusPoints (default 13) when made, -N when missed.
  * - Pass: +passPoints if tricksWon >= passTarget (default 5), otherwise -passPoints.
  */
 export function calculateRoundScore(
   bidStatus: BidStatus,
   tricksWon: number,
-  rules: Pick<RuleConfig, 'passTarget' | 'passPoints'> = DEFAULT_RULES,
+  rules: Pick<RuleConfig, 'passTarget' | 'passPoints'> & Partial<Pick<RuleConfig, 'bonusBid' | 'bonusPoints'>> = DEFAULT_RULES,
 ): number {
   if (!Number.isInteger(tricksWon) || tricksWon < 0 || tricksWon > 13) throw new Error(`Invalid trick count: ${tricksWon}`);
   switch (bidStatus.kind) {
     case 'bid':
-      return tricksWon >= bidStatus.amount ? bidStatus.amount : -bidStatus.amount;
+      if (tricksWon < bidStatus.amount) return -bidStatus.amount;
+      return rules.bonusBid != null && bidStatus.amount === rules.bonusBid && rules.bonusPoints != null ? rules.bonusPoints : bidStatus.amount;
     case 'pass':
       return tricksWon >= rules.passTarget ? rules.passPoints : -rules.passPoints;
     default:

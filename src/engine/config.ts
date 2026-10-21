@@ -37,7 +37,10 @@ export const DEFAULT_RULES: RuleConfig = {
   // Section 8B is titled "Opponent requests a reveal": in team mode the bidder's partner may not. (assumption)
   partnerMayRequestReveal: false,
   minBid: 7,
-  maxBid: 13,
+  // Bids are 7 (Small), 8, 9 or 10 (Bonus). Making a 10 scores 13; failing it costs 10. (confirmed by the game owner)
+  maxBid: 10,
+  bonusBid: 10,
+  bonusPoints: 13,
   passTarget: 5,
   passPoints: 5,
   winCondition: 'reachOrExceed',

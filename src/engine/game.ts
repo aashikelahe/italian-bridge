@@ -443,7 +443,7 @@ export function applyAction(input: GameState, action: Action, rng: Rng = Math.ra
       b.history.push({ seat: action.seat, action: 'bid', amount: action.amount });
       state.players[action.seat].bid = { kind: 'bid', amount: action.amount };
       state.players[action.seat].highestOwnBid = action.amount;
-      log(state, action.amount === minBid ? '{p} bids {n} (Small).' : '{p} bids {n}.', { p: action.seat, n: action.amount });
+      log(state, action.amount === minBid ? '{p} bids {n} (Small).' : action.amount === state.config.bonusBid ? '{p} bids {n} (Bonus)!' : '{p} bids {n}.', { p: action.seat, n: action.amount });
       advanceBidding(state, action.seat);
       return { ok: true, state };
     }

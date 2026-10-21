@@ -190,6 +190,9 @@ export interface RuleConfig {
   partnerMayRequestReveal: boolean;
   minBid: number;
   maxBid: number;
+  /** The top bid is a bonus call: making it scores bonusPoints instead of the bid. null = no bonus. */
+  bonusBid: number | null;
+  bonusPoints: number;
   passTarget: number;
   passPoints: number;
   winCondition: WinCondition;

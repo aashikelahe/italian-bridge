@@ -17,7 +17,17 @@ export interface RoomSettings {
   rules: RuleConfig;
 }
 
-export interface MemberInfo { id: string; name: string; online: boolean }
+export interface MemberInfo {
+  id: string; name: string; online: boolean;
+  /** Player ID chosen in the profile (unique on the server), without the @. */
+  handle?: string | null;
+  /** Picture: 'e:<emoji>' for a ready-made avatar, 'u:<version>' for an uploaded photo (GET /avatar/<id>), or null. */
+  pic?: string | null;
+  level?: number;
+  /** In the voice chat, and whether their microphone is muted. */
+  voice?: boolean;
+  muted?: boolean;
+}
 export interface ChatMsg { id: number; from: string; name: string; text: string; at: number }
 
 export interface RoomInfo {
@@ -46,6 +56,9 @@ export type ClientMsg =
   | { t: 'act'; action: Action }
   | { t: 'throw'; to: Seat; e: string }
   | { t: 'smack' }
+  | { t: 'profile'; handle: string; avatar: string | null; level: number }
+  | { t: 'voice'; on: boolean; muted: boolean }
+  | { t: 'rtc'; to: string; data: unknown }
   | { t: 'lobby' }
   | { t: 'close' }
   | { t: 'ping' };
@@ -56,6 +69,8 @@ export type ServerMsg =
   | { t: 'view'; view: PlayerView }
   | { t: 'throw'; from: Seat; to: Seat; e: string }
   | { t: 'smack'; seat: Seat }
+  | { t: 'profile'; ok: boolean; handle: string; error?: string }
+  | { t: 'rtc'; from: string; data: unknown }
   | { t: 'error'; msg: string }
   | { t: 'left'; reason: 'left' | 'closed' | 'missing' }
   | { t: 'pong' };
@@ -74,3 +89,11 @@ export const AWAY_MS = 45_000;
 export const ROOM_CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const normalizeCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 export const cleanName = (s: string) => s.replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 16);
+
+/** Player IDs: 3–16 characters, lowercase letters, digits and _. */
+export const HANDLE_RE = /^[a-z0-9_]{3,16}$/;
+export const normalizeHandle = (s: string) => s.toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '').slice(0, 16);
+/** Ready-made avatars a player can choose instead of a photo. */
+export const PRESET_AVATARS = ['🦁', '🐯', '🦊', '🐼', '🐸', '🐵', '🦄', '🐲', '🦉', '🐙', '🐺', '🐻', '🐨', '🦅', '🐬', '🦋', '👑', '🎩', '😎', '🤠', '🥷', '🧙', '🤖', '👻'] as const;
+/** Largest uploaded photo accepted (as a data: URL). Photos are resized to 160×160 JPEG in the browser first. */
+export const MAX_PHOTO_CHARS = 48_000;

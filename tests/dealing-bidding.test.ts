@@ -60,15 +60,15 @@ describe('cut and dealing', () => {
 });
 
 describe('bidding', () => {
-  it('starts with the player after the dealer and validates bids 7..13', () => {
+  it('starts with the player after the dealer and validates bids 7..10', () => {
     const s = toBidding();
     expect(s.currentPlayer).toBe('A');
     expect(applyAction(s, { type: 'BID', seat: 'A', amount: 6 }).ok).toBe(false);
-    expect(applyAction(s, { type: 'BID', seat: 'A', amount: 14 }).ok).toBe(false);
+    expect(applyAction(s, { type: 'BID', seat: 'A', amount: 11 }).ok).toBe(false);
     expect(applyAction(s, { type: 'BID', seat: 'A', amount: 7.5 }).ok).toBe(false);
     expect(applyAction(s, { type: 'BID', seat: 'B', amount: 8 }).ok).toBe(false); // out of turn
     expect(applyAction(s, { type: 'BID', seat: 'A', amount: 7 }).ok).toBe(true);
-    expect(applyAction(s, { type: 'BID', seat: 'A', amount: 13 }).ok).toBe(true);
+    expect(applyAction(s, { type: 'BID', seat: 'A', amount: 10 }).ok).toBe(true);
   });
 
   it('auction option: A 7, B pass, C 9, D pass, A pass → C wins with 9', () => {
@@ -95,6 +95,12 @@ describe('bidding', () => {
     s = mustApply(s, { type: 'PASS', seat: 'B' });
     s = mustApply(s, { type: 'BID', seat: 'C', amount: 9 });
     s = mustApply(s, { type: 'BID', seat: 'D', amount: 10 });
+    expect(s.phase).toBe('TRUMP_RESERVATION'); // 10 is the top bid
+    s = toBidding(1, { biddingStyle: 'auction', maxBid: 13, bonusBid: null });
+    s = mustApply(s, { type: 'BID', seat: 'A', amount: 8 });
+    s = mustApply(s, { type: 'PASS', seat: 'B' });
+    s = mustApply(s, { type: 'BID', seat: 'C', amount: 9 });
+    s = mustApply(s, { type: 'BID', seat: 'D', amount: 10 });
     s = mustApply(s, { type: 'BID', seat: 'A', amount: 11 });
     expect(s.currentPlayer).toBe('C');
     expect(applyAction(s, { type: 'BID', seat: 'B', amount: 12 }).ok).toBe(false);
@@ -104,9 +110,9 @@ describe('bidding', () => {
     expect(s.bidding.highestBidder).toBe('A');
   });
 
-  it('a bid of 13 ends the auction; remaining players are auto-passed', () => {
+  it('a bid of 10 (Bonus) ends the auction; remaining players are auto-passed', () => {
     let s = toBidding();
-    s = mustApply(s, { type: 'BID', seat: 'A', amount: 13 });
+    s = mustApply(s, { type: 'BID', seat: 'A', amount: 10 });
     expect(s.phase).toBe('TRUMP_RESERVATION');
     expect(s.bidding.history.filter((h) => h.action === 'auto-pass')).toHaveLength(3);
   });
@@ -146,7 +152,7 @@ describe('bidding', () => {
     let s = toBidding();
     s = mustApply(s, { type: 'BID', seat: 'A', amount: 8 });
     expect(applyAction(s, { type: 'BID', seat: 'B', amount: 8 }).ok).toBe(false);
-    s = mustApply(s, { type: 'BID', seat: 'B', amount: 10 });
+    s = mustApply(s, { type: 'BID', seat: 'B', amount: 9 });
     s = mustApply(s, { type: 'PASS', seat: 'C' });
     expect(s.currentPlayer).toBe('D');
     s = mustApply(s, { type: 'PASS', seat: 'D' });

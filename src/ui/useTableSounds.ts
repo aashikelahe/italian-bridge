@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { PlayerView } from '../engine/view';
 import { teamOf } from '../engine/seating';
-import { playBid, playDeal, playPass, playReveal, playRoundEnd, playShuffle, playYourTurn } from './sound';
+import { buzz, playBid, playBonus, playDeal, playPass, playReveal, playRoundEnd, playShuffle, playTrickWon, playVictory, playYourTurn } from './sound';
 
 /** Sound effects driven by what changes in the view (works the same offline and online). */
 export function useTableSounds(view: PlayerView) {
@@ -20,14 +20,25 @@ export function useTableSounds(view: PlayerView) {
     // Bids and passes.
     if (view.bidding.history.length > p.bidding.history.length && view.phase !== 'SHUFFLE') {
       const last = view.bidding.history[view.bidding.history.length - 1];
-      if (last.action === 'bid' || last.action === 'forced') playBid(); else playPass();
+      if (last.action === 'bid' && last.amount === view.config.bonusBid) playBonus();
+      else if (last.action === 'bid' || last.action === 'forced') playBid(); else playPass();
     }
     // The trump is shown.
     if (view.trump.revealed && !p.trump.revealed) playReveal();
     // Your turn (bidding or playing).
     const myTurnNow = view.currentPlayer === view.seat && (view.phase === 'BIDDING' || view.phase === 'PLAYING' || view.phase === 'TRUMP_RESERVATION');
     const myTurnBefore = p.currentPlayer === p.seat && p.phase === view.phase;
-    if (myTurnNow && !myTurnBefore) setTimeout(playYourTurn, 250);
+    if (myTurnNow && !myTurnBefore) { setTimeout(playYourTurn, 250); buzz(40); }
+    // A trick was won.
+    const w = view.currentTrick?.winner;
+    if (w && w !== p.currentTrick?.winner) setTimeout(() => playTrickWon(teamOf(w) === teamOf(view.seat) && (view.mode === 'team' || w === view.seat)), 900);
+    // The match is over.
+    if (view.phase === 'MATCH_OVER' && p.phase !== 'MATCH_OVER') {
+      const mw = view.matchWinner;
+      const won = !!mw && ((mw.kind === 'team' && mw.id === teamOf(view.seat)) || (mw.kind === 'player' && mw.seat === view.seat));
+      setTimeout(() => (won ? playVictory() : playRoundEnd(false)), 500);
+      return;
+    }
     // Round over: did my side do well?
     if (view.roundHistory.length > p.roundHistory.length) {
       const r = view.roundHistory[view.roundHistory.length - 1];

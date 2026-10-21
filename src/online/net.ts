@@ -29,6 +29,30 @@ export function myToken(): string {
   return memToken;
 }
 
+/** The login code moves your identity (player ID, seat, photo) to another device. */
+export function setMyToken(code: string): boolean {
+  const c = code.trim().toLowerCase().replace(/[^0-9a-f]/g, '');
+  if (c.length < 16 || c.length > 64) return false;
+  memToken = c;
+  lsSet(TOKEN_KEY, c);
+  return true;
+}
+
+/** The game server's web address (for photos), or null when online play is off. */
+export function serverHttpBase(): string | null {
+  const u = serverUrl();
+  return u ? u.replace(/^ws/, 'http').replace(/\/ws$/, '') : null;
+}
+
+/** Picture of a room member: an emoji avatar, a photo address, or nothing. */
+export function memberPic(id: string, pic: string | null | undefined): { emoji?: string; src?: string } | null {
+  if (!pic) return null;
+  if (pic.startsWith('e:')) return { emoji: pic.slice(2) };
+  const base = serverHttpBase();
+  if (pic.startsWith('u:') && base) return { src: `${base}/avatar/${id}.jpg?v=${encodeURIComponent(pic.slice(2))}` };
+  return null;
+}
+
 /**
  * Where the game server is:
  * 1. a <meta name="ib-server" content="https://…"> tag in the page (used when the game is copied onto
@@ -65,16 +89,24 @@ export interface ServerState {
 }
 
 /** Connects while mounted. `name` is your table name; changing it renames you. */
-export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmack?: (seat: Seat) => void) {
+export interface ServerHandlers {
+  onThrow?: (t: ThrowEvent) => void;
+  onSmack?: (seat: Seat) => void;
+  onRtc?: (from: string, data: unknown) => void;
+}
+export interface ProfileResult { ok: boolean; handle: string; error?: string }
+
+export function useServer(name: string, handlers: ServerHandlers, profile: Extract<ClientMsg, { t: 'profile' }> | null) {
   const [st, setSt] = useState<ServerState>({ status: 'connecting', me: null, room: null, view: null, error: null, left: null });
   const ws = useRef<WebSocket | null>(null);
   const queue = useRef<ClientMsg[]>([]);
   const nameRef = useRef(name);
   nameRef.current = name;
-  const throwRef = useRef(onThrow);
-  throwRef.current = onThrow;
-  const smackRef = useRef(onSmack);
-  smackRef.current = onSmack;
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
+  const [profileResult, setProfileResult] = useState<ProfileResult | null>(null);
   const throwSeq = useRef(0);
   const ready = useRef(false);
 
@@ -104,6 +136,7 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmac
             ready.current = true;
             setSt((s) => ({ ...s, status: 'open', me: m.id }));
             // Rejoin the room we were in, then send anything queued while offline.
+            if (profileRef.current) sock.send(JSON.stringify(profileRef.current));
             const room = lsGet(ROOM_KEY);
             if (room) sock.send(JSON.stringify({ t: 'join', code: room } satisfies ClientMsg));
             for (const q of queue.current.splice(0)) sock.send(JSON.stringify(q));
@@ -117,10 +150,16 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmac
             setSt((s) => ({ ...s, view: m.view }));
             break;
           case 'throw':
-            throwRef.current({ id: ++throwSeq.current, from: m.from, to: m.to, e: m.e });
+            handlersRef.current.onThrow?.({ id: ++throwSeq.current, from: m.from, to: m.to, e: m.e });
             break;
           case 'smack':
-            smackRef.current?.(m.seat);
+            handlersRef.current.onSmack?.(m.seat);
+            break;
+          case 'rtc':
+            handlersRef.current.onRtc?.(m.from, m.data);
+            break;
+          case 'profile':
+            setProfileResult({ ok: m.ok, handle: m.handle, error: m.error });
             break;
           case 'error':
             setSt((s) => ({ ...s, error: m.msg }));
@@ -147,6 +186,12 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmac
     return () => { stopped = true; if (timer) window.clearTimeout(timer); if (ping) window.clearInterval(ping); ws.current?.close(); };
   }, []);
 
+  // Send your profile again whenever it changes.
+  const profileKey = profile ? `${profile.handle}|${profile.avatar?.length ?? 0}|${profile.avatar?.slice(-24) ?? ''}|${profile.level}` : '';
+  useEffect(() => {
+    if (profileRef.current && ready.current && ws.current?.readyState === 1) ws.current.send(JSON.stringify(profileRef.current));
+  }, [profileKey]);
+
   // Keep the server's copy of your name current.
   useEffect(() => {
     if (ready.current && ws.current?.readyState === 1) ws.current.send(JSON.stringify({ t: 'rename', name } satisfies ClientMsg));
@@ -157,11 +202,11 @@ export function useServer(name: string, onThrow: (t: ThrowEvent) => void, onSmac
     if (m.t === 'create' || m.t === 'join') setSt((s) => ({ ...s, left: null, error: null }));
     const sock = ws.current;
     if (sock && sock.readyState === 1 && ready.current) sock.send(JSON.stringify(m));
-    else if (m.t !== 'throw') queue.current.push(m);
+    else if (m.t !== 'throw' && m.t !== 'rtc' && m.t !== 'smack') queue.current.push(m);
   }, []);
   const clearError = useCallback(() => setSt((s) => ({ ...s, error: null })), []);
   const clearLeft = useCallback(() => setSt((s) => ({ ...s, left: null })), []);
-  return { ...st, send, clearError, clearLeft };
+  return { ...st, send, clearError, clearLeft, profileResult };
 }
 
 export function inviteLink(code: string): string {

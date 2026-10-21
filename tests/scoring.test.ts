@@ -3,13 +3,17 @@ import { ALL_AI } from './helpers';
 
 describe('individual scoring', () => {
   it.each([
-    [7, 7, 7], [7, 8, 7], [7, 6, -7], [9, 9, 9], [9, 11, 9], [9, 8, -9], [13, 13, 13], [13, 12, -13],
+    [7, 7, 7], [7, 8, 7], [7, 6, -7], [9, 9, 9], [9, 11, 9], [9, 8, -9], [8, 8, 8], [10, 10, 13], [10, 12, 13], [10, 9, -10],
   ])('bid %i, %i tricks → %i', (bid, tricks, score) => {
     expect(calculateRoundScore({ kind: 'bid', amount: bid }, tricks)).toBe(score);
   });
 
   it.each([[4, -5], [5, 5], [6, 5], [8, 5], [0, -5], [13, 5]])('pass, %i tricks → %i', (tricks, score) => {
     expect(calculateRoundScore({ kind: 'pass' }, tricks)).toBe(score);
+  });
+
+  it('without a bonus rule, 10 scores 10', () => {
+    expect(calculateRoundScore({ kind: 'bid', amount: 10 }, 10, { passTarget: 5, passPoints: 5, bonusBid: null, bonusPoints: 13 })).toBe(10);
   });
 
   it('rejects invalid input', () => {

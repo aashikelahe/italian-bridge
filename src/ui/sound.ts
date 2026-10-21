@@ -217,3 +217,109 @@ export function playSmack() {
   tone(ac, t, 260, 0.12, 0.35, 'square', 120);            // body
   noiseHit(ac, t + 0.11, 0.04, 'highpass', 3500, 0.45);   // snap echo
 }
+
+// ---------------------------------------------------------------- interface and extra sounds
+
+/** Picking a card in your hand: a light slide-and-click. */
+export function playSelect() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  noiseHit(ac, t, 0.05, 'bandpass', 4200, 0.07, 1.5);
+  tone(ac, t + 0.01, 1900, 0.04, 0.035, 'triangle');
+}
+
+/** A button press: a soft glassy tick. */
+export function playClick() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  tone(ac, t, 1500, 0.05, 0.05, 'sine', 900);
+}
+
+/** You won the trick: a coin-like chime. Partner or opponent: a softer one. */
+export function playTrickWon(mine: boolean) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  if (mine) { tone(ac, t, 988, 0.18, 0.1, 'triangle'); tone(ac, t + 0.08, 1319, 0.3, 0.09, 'triangle'); }
+  else tone(ac, t, 660, 0.18, 0.05, 'sine');
+}
+
+/** The 10 (Bonus) call: a short fanfare. */
+export function playBonus() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  [[523, 0], [659, 0.1], [784, 0.2], [1047, 0.32]].forEach(([f, d]) => {
+    tone(ac, t + d, f, d === 0.32 ? 0.7 : 0.14, 0.12, 'sawtooth');
+    tone(ac, t + d, f * 2, d === 0.32 ? 0.6 : 0.12, 0.05, 'triangle');
+  });
+  noiseHit(ac, t + 0.32, 0.6, 'highpass', 7000, 0.06);
+}
+
+/** An emoji is thrown: a whoosh. */
+export function playWhoosh() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  const dur = 0.45;
+  const src = ac.createBufferSource();
+  src.buffer = noiseBuffer(ac, dur);
+  const f = ac.createBiquadFilter();
+  f.type = 'bandpass';
+  f.Q.value = 2;
+  f.frequency.setValueAtTime(400, t);
+  f.frequency.exponentialRampToValueAtTime(2600, t + dur * 0.6);
+  f.frequency.exponentialRampToValueAtTime(800, t + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.22, t + dur * 0.5);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(ac.destination);
+  src.start(t);
+  src.stop(t + dur);
+}
+
+/** Someone joins / leaves the voice chat. */
+export function playVoiceJoin(on: boolean) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  if (on) { tone(ac, t, 660, 0.12, 0.08); tone(ac, t + 0.09, 990, 0.18, 0.08); }
+  else { tone(ac, t, 990, 0.12, 0.07); tone(ac, t + 0.09, 660, 0.18, 0.07); }
+}
+
+/** A move that is not allowed: a dull buzz. */
+export function playError() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  tone(ac, t, 150, 0.16, 0.12, 'square', 110);
+}
+
+/** Someone joins the room. */
+export function playJoin() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  [784, 988, 1175].forEach((f, i) => tone(ac, t + i * 0.06, f, 0.2, 0.07, 'triangle'));
+}
+
+/** Match won: a longer celebration. */
+export function playVictory() {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  const notes = [523, 659, 784, 1047, 784, 1047, 1319, 1568];
+  notes.forEach((f, i) => tone(ac, t + i * 0.11, f, i === notes.length - 1 ? 0.9 : 0.2, 0.11, 'triangle'));
+  for (let i = 0; i < 6; i++) noiseHit(ac, t + 0.9 + i * 0.07, 0.12, 'highpass', 6000 + i * 300, 0.05);
+}
+
+/** Phone vibration (when allowed and switched on). */
+let haptics = true;
+export function setHapticsEnabled(on: boolean) { haptics = on; }
+export function buzz(pattern: number | number[]) {
+  if (!haptics) return;
+  try { navigator.vibrate?.(pattern); } catch { /* not supported */ }
+}

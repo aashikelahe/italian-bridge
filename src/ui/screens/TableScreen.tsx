@@ -18,7 +18,13 @@ import { BidPanel, CutPanel, MatchResult, PhaseBanner, ReservePanel, RoundResult
 import { ReactionLayer, SmackLayer, ThrowTray, type Reaction, type SmackEvent } from '../reactions';
 import { useI18n, useSeatName } from '../i18n';
 import { useTableSounds } from '../useTableSounds';
-import { playChat } from '../sound';
+import { playChat, playError } from '../sound';
+import type { Voice } from '../../online/voice';
+import { Face, colorFor, type PicInfo } from '../profile';
+import { QUICK_PHRASES } from '../quickChat';
+import { cardFromId } from '../../engine/cards';
+import { CardFace } from '../components/Card';
+import { relPos } from '../layout';
 
 export interface TableChat {
   messages: ChatMsg[];
@@ -26,6 +32,7 @@ export interface TableChat {
   onSend: (text: string) => void;
   /** Which seat a chat author sits in (for speech bubbles), if any. */
   seatOf: (userId: string) => Seat | null;
+  picOf?: (userId: string) => PicInfo | null;
 }
 
 export interface TableScreenProps {
@@ -55,6 +62,8 @@ export interface TableScreenProps {
   /** Shown over the top of the table (connection problems, away players). */
   notice?: string | null;
   exitLabel?: string;
+  /** Online rooms: the voice chat. */
+  voice?: Voice;
 }
 
 function phaseLabel(i: ReturnType<typeof useI18n>, p: string): string {
@@ -99,6 +108,7 @@ export function TableScreen(props: TableScreenProps) {
   const [target, setTarget] = useState<Seat | null>(null);
   const [menu, setMenu] = useState(false);
   const [scores, setScores] = useState(false);
+  const [lastTrick, setLastTrick] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => lsGet('ib.chatOpen') !== '0');
   const [uprightOk, setUprightOk] = useState(() => lsGet('ib.upright') === '1');
   const portraitPhone = useIsPortraitPhone();
@@ -106,6 +116,7 @@ export function TableScreen(props: TableScreenProps) {
 
   useEffect(() => {
     if (!error) return;
+    playError();
     const t = setTimeout(clearError, 3500);
     return () => clearTimeout(t);
   }, [error, clearError]);
@@ -134,7 +145,7 @@ export function TableScreen(props: TableScreenProps) {
   // ---- smack: once per trick, after playing your card
   const me = view.seat;
   const t = view.currentTrick;
-  const iPlayed = !!t && view.phase === 'PLAYING' && t.plays.some((p) => p.seat === me);
+  const iPlayed = !!t && view.phase === 'PLAYING' && t.plays.length > 0 && t.plays[t.plays.length - 1].seat === me;
   const [smackedTrick, setSmackedTrick] = useState<number | null>(null);
   const canSmack = iPlayed && smackedTrick !== t!.index && !sweeping;
   const latestSmack = props.smacks[props.smacks.length - 1] ?? null;
@@ -189,6 +200,18 @@ export function TableScreen(props: TableScreenProps) {
           {trumpChip}
         </div>
         <div className="tbl-top-right">
+          {view.completedTricks.length > 0 && (phase === 'PLAYING' || phase === 'MANDATORY_REVEAL') && (
+            <button className="icon-btn" onClick={() => setLastTrick((v) => !v)} aria-pressed={lastTrick} aria-label={i.t('Last trick')} title={i.t('Last trick')}>↶</button>
+          )}
+          {props.voice && (
+            <button
+              className={`icon-btn mic-btn ${props.voice.joined ? (props.voice.muted ? 'muted' : 'live') : ''} ${props.voice.speaking.has(chat?.me ?? '') ? 'talking' : ''}`}
+              onClick={props.voice.joined ? props.voice.toggleMute : props.voice.join}
+              disabled={!props.voice.supported || props.voice.joining}
+              aria-label={props.voice.joined ? (props.voice.muted ? i.t('Unmute') : i.t('Mute')) : i.t('Join voice')}
+              title={props.voice.joined ? (props.voice.muted ? i.t('Unmute') : i.t('Mute')) : i.t('Join voice')}
+            >{props.voice.joined && props.voice.muted ? '🔇' : '🎙'}</button>
+          )}
           <button className="pill-btn" onClick={() => setScores(true)}>
             <span>{i.t('Scores')}</span>
             {view.teams
@@ -208,6 +231,7 @@ export function TableScreen(props: TableScreenProps) {
             <button role="menuitem" onClick={() => void goFullscreenLandscape()}>{i.t('Full screen')}</button>
             <button role="menuitem" onClick={props.onToggleLang}>{i.lang === 'bn' ? 'English' : 'বাংলা'}</button>
             {props.onToggleSound && <button role="menuitem" onClick={props.onToggleSound}>{settings.sound ? i.t('Sound off') : i.t('Sound on')}</button>}
+            {props.voice?.joined && <button role="menuitem" onClick={props.voice.leave}>{i.t('Leave voice')}</button>}
           </div>
         )}
       </header>
@@ -234,6 +258,22 @@ export function TableScreen(props: TableScreenProps) {
           {showHand && <div className="tbl-hand"><HumanHand view={view} dispatch={dispatch} sort={settings.sort} /></div>}
           {actions}
 
+          {lastTrick && view.completedTricks.length > 0 && (() => {
+            const lt = view.completedTricks[view.completedTricks.length - 1];
+            return (
+              <div className="last-trick glass" role="dialog" aria-label={i.t('Last trick')} onClick={() => setLastTrick(false)}>
+                <header><b>{i.t('Last trick')}</b><span>{i.t('{p} won it', { p: seatName(lt.winner) })}</span></header>
+                <div className="lt-cards">
+                  {lt.plays.map((pl) => (
+                    <figure key={pl.cardId} className={`lt-${relPos(me, pl.seat)} ${pl.seat === lt.winner ? 'won' : ''}`}>
+                      <CardFace card={cardFromId(pl.cardId)} size="sm" />
+                      <figcaption>{seatName(pl.seat)}</figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
           <SmackLayer me={me} smacks={props.smacks} />
           {friends && <ReactionLayer me={me} reactions={reactions} />}
           {friends && onThrow && !tray && (
@@ -296,11 +336,12 @@ function ChatRail({ chat, onClose }: { chat: TableChat; onClose: () => void }) {
         {chat.messages.length === 0 && <li className="muted">{i.t('Say something to the table.')}</li>}
         {chat.messages.map((m) => (
           <li key={m.id} className={m.from === chat.me ? 'mine' : ''}>
-            <b>{m.from === chat.me ? i.t('You') : m.name}</b>
-            <span>{m.text}</span>
+            {m.from !== chat.me && <Face pic={chat.picOf?.(m.from)} name={m.name} color={colorFor(m.name)} className="chat-face" />}
+            <div><b>{m.from === chat.me ? i.t('You') : m.name}</b><span>{m.text}</span></div>
           </li>
         ))}
       </ol>
+      <div className="quick-row">{QUICK_PHRASES.map((q) => <button key={q} type="button" className="quick-btn" onClick={() => chat.onSend(i.t(q))}>{i.t(q)}</button>)}</div>
       <form className="rail-form" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { chat.onSend(text); setText(''); } }}>
         <input id="chat-table" value={text} maxLength={300} onChange={(e) => setText(e.target.value)} placeholder={i.t('Message')} aria-label={i.t('Message')} autoComplete="off" />
         <button className="btn small brass" type="submit" disabled={!text.trim()}>{i.t('Send')}</button>

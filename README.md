@@ -70,6 +70,13 @@ The UI and AI never read raw `GameState` — they get `getPlayerView(state, seat
 * `npm test` runs the rule tests and 800+ simulated all-AI rounds across both modes and both trump-effect settings, checking that every card is dealt and played exactly once, trick counts sum to 13, and scores match the formula.
 * To play by hand: `npm run dev`, choose New game. Turn on **Settings → Developer mode** to see every hand while checking rules; set **House rules → Who cuts → Always me** to exercise the cut screen each round.
 
+## Highlights
+
+* Bids are 7 (Small), 8, 9 or 10 (Bonus). A made 10 scores 13; a missed 10 costs 10.
+* Full-screen landscape table with a 3D felt, fanned hand, Smack / বাড়ি, emoji throwing, last-trick viewer and lots of synthesized sounds.
+* Online rooms with chat, quick chat, **live voice chat** and **player cards** (unique player ID + photo or avatar). See `docs/ONLINE.md`.
+* English and Bangla.
+
 ## What's done and what isn't
 
 Implemented and tested: everything in the specification's core rules — deck, shuffle, interactive cut, 5/4/4 dealing, bidding with pass and all-pass handling, private trump reservation, voluntary / requested / mandatory reveal, follow-suit validation, trick resolution, individual and team scoring, 30/50 targets, tie handling, three AI opponents with three difficulty levels, save/resume, statistics, responsive layout, reduced-motion support.

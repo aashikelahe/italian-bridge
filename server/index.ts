@@ -26,6 +26,14 @@ const TYPES: Record<string, string> = {
 async function serveStatic(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? '/', 'http://x');
   if (url.pathname === '/healthz') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('ok'); return; }
+  const pic = /^\/avatar\/([A-Za-z0-9_-]{16})\.jpg$/.exec(url.pathname);
+  if (pic) {
+    const photo = rooms.profiles.photo(pic[1]);
+    if (!photo) { res.writeHead(404, { 'access-control-allow-origin': '*' }); res.end(); return; }
+    res.writeHead(200, { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=86400', 'access-control-allow-origin': '*', 'x-content-type-options': 'nosniff' });
+    res.end(photo);
+    return;
+  }
   let rel = '';
   try { rel = normalize(decodeURIComponent(url.pathname)).replace(/^([/\\])+/, ''); } catch { res.writeHead(400); res.end(); return; }
   let file = resolve(ROOT, rel || 'index.html');
@@ -57,7 +65,12 @@ const rooms = new RoomManager();
 // Optional persistence: rooms survive a restart on hosts with a disk.
 let dirty = false;
 if (DATA_FILE && existsSync(DATA_FILE)) {
-  try { rooms.restore(JSON.parse(readFileSync(DATA_FILE, 'utf8'))); console.log(`Restored ${rooms.rooms.size} rooms`); } catch (e) { console.error('Could not read', DATA_FILE, e); }
+  try {
+    const data = JSON.parse(readFileSync(DATA_FILE, 'utf8'));
+    rooms.restore(Array.isArray(data) ? data : data.rooms ?? []);
+    if (!Array.isArray(data)) rooms.profiles.restore(data.profiles ?? []);
+    console.log(`Restored ${rooms.rooms.size} rooms`);
+  } catch (e) { console.error('Could not read', DATA_FILE, e); }
   for (const r of rooms.rooms.values()) rooms.pump(r);
 }
 rooms.onDirty = () => { dirty = true; };
@@ -65,14 +78,14 @@ async function save() {
   if (!DATA_FILE || !dirty) return;
   dirty = false;
   const tmp = `${DATA_FILE}.tmp`;
-  await writeFile(tmp, JSON.stringify(rooms.snapshot()));
+  await writeFile(tmp, JSON.stringify({ rooms: rooms.snapshot(), profiles: rooms.profiles.snapshot() }));
   await rename(tmp, DATA_FILE);
 }
 setInterval(() => { save().catch((e) => console.error('save failed', e)); }, 10_000).unref();
 setInterval(() => rooms.sweep(), 10 * 60_000).unref();
 
 const server = createServer((req, res) => { void serveStatic(req, res); });
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
 /** A player's public id is derived from their secret token, so it survives reconnects and restarts. */
 const idFor = (token: string) => createHash('sha256').update(`ib:${token}`).digest('base64url').slice(0, 16);
@@ -80,8 +93,9 @@ const idFor = (token: string) => createHash('sha256').update(`ib:${token}`).dige
 wss.on('connection', (ws: WebSocket) => {
   let client: Client | null = null;
   let tokens = 30;
+  let rtcTokens = 120; // voice call set-up sends bursts of small messages
   let alive = true;
-  const refill = setInterval(() => { tokens = Math.min(30, tokens + 10); }, 1000);
+  const refill = setInterval(() => { tokens = Math.min(30, tokens + 10); rtcTokens = Math.min(120, rtcTokens + 40); }, 1000);
   const send = (msg: ServerMsg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
   ws.on('pong', () => { alive = true; });
   const beat = setInterval(() => {
@@ -91,10 +105,10 @@ wss.on('connection', (ws: WebSocket) => {
   }, 25_000);
 
   ws.on('message', (data) => {
-    if (--tokens < 0) return; // too many messages: drop
     let m: ClientMsg;
     try { m = JSON.parse(String(data)); } catch { return; }
     if (!m || typeof m !== 'object' || typeof m.t !== 'string') return;
+    if (m.t === 'rtc' ? --rtcTokens < 0 : --tokens < 0) return; // too many messages: drop
     if (m.t === 'ping') { send({ t: 'pong' }); return; }
     if (m.t === 'hello') {
       const token = String(m.token ?? '');

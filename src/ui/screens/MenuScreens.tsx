@@ -5,11 +5,20 @@ import { cardFromId } from '../../engine/cards';
 import { CardFace, CardBack } from '../components/Card';
 import { storage, EMPTY_STATS, type Settings } from '../storage';
 import { useI18n } from '../i18n';
+import { Face, colorFor, levelOf, picFromAvatar, useProfile } from '../profile';
+import { TABLE_THEMES, CARD_BACKS } from '../storage';
 
-export function MainMenu({ hasSave, onNew, onResume, onGo, onOnline, onToggleLang }: { hasSave: boolean; onNew: () => void; onResume: () => void; onGo: (s: 'rules' | 'settings' | 'stats') => void; onOnline: () => void; onToggleLang: () => void }) {
+export function MainMenu({ hasSave, onNew, onResume, onGo, onOnline, onToggleLang, settings }: { hasSave: boolean; onNew: () => void; onResume: () => void; onGo: (s: 'rules' | 'settings' | 'stats' | 'profile') => void; onOnline: () => void; onToggleLang: () => void; settings: Settings }) {
   const i = useI18n();
+  const profile = useProfile();
+  const lv = levelOf(storage.loadStats());
+  const name = settings.onlineNick || (settings.playerName !== 'You' ? settings.playerName : '') || i.t('Set up your player card');
   return (
     <div className="menu">
+      <button className="profile-chip glass" onClick={() => onGo('profile')}>
+        <Face pic={picFromAvatar(profile.avatar) ?? (settings.onlineNick || settings.playerName !== 'You' ? null : { emoji: '👤' })} name={name} color={colorFor(name)} />
+        <span className="pc-text"><b>{name}</b><small>{profile.handle ? `@${profile.handle}` : i.t('Create your player ID')} · {i.t('Level {n}', { n: lv.level })}</small></span>
+      </button>
       <div className="menu-hero" aria-hidden>
         <CardFace card={cardFromId('AS')} size="lg" className="h1" />
         <CardBack size="lg" className="h2 sealed-hero" />
@@ -123,6 +132,9 @@ export function SettingsScreen({ settings, onSave, onBack }: { settings: Setting
         <Segmented label="Animation" value={s.anim} onChange={(v) => update({ ...s, anim: v })} options={[{ value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }, { value: 'reduced', label: 'Reduced motion' }]} />
         <Segmented label="Sort my hand" value={s.sort} onChange={(v) => update({ ...s, sort: v })} options={[{ value: 'suitThenRank', label: 'By suit' }, { value: 'rankThenSuit', label: 'By rank' }]} />
         <Segmented label="Sound effects" value={s.sound ? 'on' : 'off'} onChange={(v) => update({ ...s, sound: v === 'on' })} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
+        <Segmented label="Table colour" value={s.theme} onChange={(v) => update({ ...s, theme: v })} options={TABLE_THEMES.map((t) => ({ value: t, label: t === 'emerald' ? 'Emerald' : t === 'royal' ? 'Royal blue' : t === 'crimson' ? 'Crimson' : 'Midnight' }))} />
+        <Segmented label="Card backs" value={s.cardBack} onChange={(v) => update({ ...s, cardBack: v })} options={CARD_BACKS.map((t) => ({ value: t, label: t === 'ruby' ? 'Ruby' : t === 'navy' ? 'Navy' : t === 'gold' ? 'Gold' : 'Carbon' }))} />
+        <Segmented label="Vibration" value={s.haptics ? 'on' : 'off'} onChange={(v) => update({ ...s, haptics: v === 'on' })} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
         <Segmented label="Developer mode (shows every hand — for testing only)" value={s.devMode ? 'on' : 'off'} onChange={(v) => update({ ...s, devMode: v === 'on' })} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
         <p className="muted">{i.t('Settings are saved on this device.')}</p>
       </div>
@@ -167,7 +179,7 @@ function RulesEn() {
       <h2>The deal</h2>
       <p>Four players, one 52-card deck. Aces are high: A K Q J 10 9 8 7 6 5 4 3 2. After the shuffle and cut, everyone gets a packet of five cards. From the second board on, the dealer stacks the previous board’s tricks and shuffles them by hand — sometimes lightly, sometimes thoroughly — so hands can come out lumpy.</p>
       <h2>Bidding</h2>
-      <p>Looking only at those five cards, each player in turn — starting after the dealer — bids how many of the 13 tricks they will take, from 7 (“Small”) up to 13, or passes. Everyone gets one turn, and each bid must be higher than the last. The highest bid wins. If nobody bids, the dealer must call 7.</p>
+      <p>Looking only at those five cards, each player in turn — starting after the dealer — bids how many of the 13 tricks they will take, 7 (“Small”), 8, 9 or 10 (“Bonus”), or passes. Everyone gets one turn, and each bid must be higher than the last. The highest bid wins. If nobody bids, the dealer must call 7.</p>
       <p>If the first hand’s five cards have no Ace, King, Queen or Jack, they may call for a reshuffle before bidding; they then become the dealer.</p>
       <h2>The hidden trump</h2>
       <p>The winning bidder picks one of their five cards and places it face down. Its suit is trump. Nobody else knows it. Then everyone receives four more cards, and then four more: 13 cards each, with the bidder’s reserved card counting as one of theirs.</p>
@@ -176,7 +188,7 @@ function RulesEn() {
       <h2>Playing tricks</h2>
       <p>The player after the bidder leads first. You must follow the led suit if you can. The highest trump (played after the reveal) wins the trick; otherwise the highest card of the led suit wins. The winner takes the four cards and leads the next trick.</p>
       <h2>Scoring</h2>
-      <p>Bid N and take at least N tricks: +N. Take fewer: −N. Extra tricks earn nothing more. If you passed, you need 5 tricks: +5 if you get them, −5 if not.</p>
+      <p>Bid N and take at least N tricks: +N. Take fewer: −N. Extra tricks earn nothing more. The 10 (Bonus) call pays 13 when made and costs 10 when missed. If you passed, you need 5 tricks: +5 if you get them, −5 if not.</p>
       <p>In the team game, partners sit opposite each other and everything is team-wise. Partners may outbid each other. The team holding the highest bid needs that many tricks together; the other team needs 5 together. Each team scores plus or minus its target; there are no individual points. The first side to reach the target (30 or 50) after a round wins. Scores can go below zero.</p>
       <h2>Friends table</h2>
       <p>In a team game you can choose a Friends table: tap 😜 or a player’s name plate to throw an emoji at their face — love, laughs, tomatoes and worse. In Bangla, a Friends table uses the everyday card names.</p>
@@ -190,7 +202,7 @@ function RulesBn() {
       <h2>তাস বাটা</h2>
       <p>চারজন খেলোয়াড়, ৫২টি তাসের এক প্যাকেট। টেক্কা সবচেয়ে বড়: টেক্কা, রাজা, রানী, গোলাম, ১০, ৯ … ২। শাফল আর কাটার পর প্রত্যেকে একসাথে পাঁচটি করে তাস পায়। দ্বিতীয় দান থেকে আগের দানের পিঠগুলো একটার ওপর একটা রেখে হাতে শাফল করা হয় — কখনো হালকা, কখনো ভালো করে — তাই একই রঙের তাস একসাথে আসতে পারে।</p>
       <h2>ডাক</h2>
-      <p>শুধু ওই পাঁচটি তাস দেখে, বাটার পরের জন থেকে শুরু করে প্রত্যেকে একবার করে ডাকে — ১৩টি পিঠের মধ্যে কয়টি নেবে, ৭ (“ছোট”) থেকে ১৩ — অথবা পাস দেয়। প্রত্যেক ডাক আগের ডাকের চেয়ে বড় হতে হবে। সবচেয়ে বড় ডাক জেতে। কেউ না ডাকলে যে বেটেছে তাকে ৭ ডাকতে হবে।</p>
+      <p>শুধু ওই পাঁচটি তাস দেখে, বাটার পরের জন থেকে শুরু করে প্রত্যেকে একবার করে ডাকে — ১৩টি পিঠের মধ্যে কয়টি নেবে, ৭ (“ছোট”), ৮, ৯ অথবা ১০ (“বোনাস”) — অথবা পাস দেয়। প্রত্যেক ডাক আগের ডাকের চেয়ে বড় হতে হবে। সবচেয়ে বড় ডাক জেতে। কেউ না ডাকলে যে বেটেছে তাকে ৭ ডাকতে হবে।</p>
       <p>প্রথম হাতের পাঁচ তাসে টেক্কা, রাজা, রানী বা গোলাম না থাকলে সে ডাকের আগে আবার শাফলের দাবি করতে পারে; তখন সে-ই বাটবে।</p>
       <h2>লুকানো রং (তুরুপ)</h2>
       <p>সবচেয়ে বড় ডাক যে দেয়, সে তার পাঁচ তাসের একটি উল্টো করে আলাদা রাখে। ওই তাসের রং-ই তুরুপ। আর কেউ জানে না। তারপর সবাই আরও চারটি, আবার চারটি তাস পায় — প্রত্যেকের ১৩টি, ডাকদাতার আলাদা রাখা তাসসহ।</p>
@@ -199,7 +211,7 @@ function RulesBn() {
       <h2>পিঠ খেলা</h2>
       <p>ডাকদাতার পরের জন প্রথম তাস দেয়। খেলা রঙের তাস থাকলে সেটাই দিতে হবে। রং দেখানোর পর দেওয়া সবচেয়ে বড় তুরুপ পিঠ জেতে; না থাকলে খেলা রঙের সবচেয়ে বড় তাস জেতে। যে জেতে সে চারটি তাস নেয় আর পরের পিঠে প্রথম তাস দেয়।</p>
       <h2>পয়েন্ট</h2>
-      <p>N ডেকে কমপক্ষে N পিঠ নিলে +N, কম নিলে −N। বেশি পিঠে বাড়তি পয়েন্ট নেই। পাস দিলে ৫টি পিঠ লাগবে: পেলে +৫, না পেলে −৫।</p>
+      <p>N ডেকে কমপক্ষে N পিঠ নিলে +N, কম নিলে −N। বেশি পিঠে বাড়তি পয়েন্ট নেই। ১০ (বোনাস) ডেকে ১০টি পিঠ নিলে +১৩, না নিলে −১০। পাস দিলে ৫টি পিঠ লাগবে: পেলে +৫, না পেলে −৫।</p>
       <p>দলের খেলায় সঙ্গীরা মুখোমুখি বসে, সবকিছু দলগতভাবে। সঙ্গীও সঙ্গীর ওপর ডাকতে পারে। যে দলের ডাক সবচেয়ে বড়, তাদের দুজনে মিলে ততগুলো পিঠ নিতে হবে; অন্য দলকে মিলে ৫টি। দল তার লক্ষ্যের সমান পয়েন্ট পায় বা হারায়; আলাদা কারো পয়েন্ট নেই। কোনো দান শেষে যে আগে লক্ষ্যে (৩০ বা ৫০) পৌঁছায় সে জেতে। পয়েন্ট শূন্যের নিচেও যেতে পারে।</p>
       <h2>বন্ধুদের টেবিল</h2>
       <p>দলের খেলায় “বন্ধুদের টেবিল” বেছে নিলে 😜 বা কারো নামের ঘরে চাপ দিয়ে তার মুখে ইমোজি ছুড়তে পারবেন — ভালোবাসা, হাসি, টমেটো আর আরও খারাপ কিছু। বাংলায় বন্ধুদের টেবিলে তাসের কথ্য নাম ব্যবহার হয় (এক্কা, সাহেব, বিবি; ইস্কাবন, ভালোবাসা, ইঁট, চিড়া)।</p>

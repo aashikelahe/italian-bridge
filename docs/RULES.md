@@ -11,7 +11,8 @@
    From the second board on, the previous board's tricks (four cards each, stacked pile on pile) are gathered and riffled by hand 1, 2, 3 or 7 times at random — usually a light shuffle, sometimes thorough — so parts of old tricks can come back together.
 3. **First deal** — a packet of five cards to each player, starting with the player after the dealer. 32 cards remain.
 4. **Reshuffle call** — if the first hand (the player after the dealer) has no A, K, Q or J among their five cards, they may call for a reshuffle before bidding. The cards are gathered and shuffled, and that player becomes the dealer.
-5. **Bidding** — starting after the dealer, each player gets exactly one turn: bid a number higher than the current highest (7 = “Small” … 13) or pass. Nobody bids twice. The highest bid wins. If nobody bids, the dealer must call 7.
+5. **Bidding** — starting after the dealer, each player gets exactly one turn: bid a number higher than the current highest (7 = “Small”, 8, 9, or 10 = “Bonus”) or pass. Nobody bids twice. The highest bid wins. If nobody bids, the dealer must call 7.
+   *Scoring the Bonus:* a 10 that is made scores **13**; a 10 that is missed scores **−10**.
 6. **Trump reservation** — the highest bidder picks one of their five cards and sets it aside face down. Its suit is trump. Only the bidder can see it.
 7. **Second deal** — four cards each. **Third deal** — four cards each. Everyone now holds 13 cards; the bidder holds 12 playable cards plus the reserved one.
 8. **Play** — 13 tricks. The player after the bidder leads trick 1; each trick's winner leads the next.

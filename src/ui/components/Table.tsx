@@ -9,20 +9,10 @@ import type { Sweep } from '../useGameDriver';
 import { callOf, teamContractMode } from './ScorePanel';
 import { useI18n, useSeatName } from '../i18n';
 import { relPos } from '../layout';
+import { playSelect } from '../sound';
 
-const AVATAR_COLORS = ['#e0a33a', '#4fb3c9', '#d0607a', '#7bc96f', '#a98be0', '#e07b4f'];
-function colorFor(name: string, seat: Seat): string {
-  let h = seat.charCodeAt(0);
-  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return AVATAR_COLORS[h % AVATAR_COLORS.length];
-}
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  const first = Array.from(parts[0])[0] ?? '?';
-  const second = parts.length > 1 ? Array.from(parts[parts.length - 1])[0] ?? '' : '';
-  return (first + second).toUpperCase();
-}
+import { Face, colorFor } from '../profile';
+import { useSeatExtra } from '../seatExtras';
 
 /**
  * A player around the table: round avatar, name, trick badge (won/needed), call, dealer chip,
@@ -49,12 +39,14 @@ export function Avatar({ view, seat, devHand, won, hit, bubble, onPick }: {
   if (!playing) target = call === null ? null : target;
   const badge = playing ? `${i.num(won_)}/${target != null ? i.num(target) : '–'}` : call === null ? (view.phase === 'BIDDING' ? '…' : '') : call === 'pass' ? i.t('Pass') : i.num(call);
   const isTurn = view.currentPlayer === seat;
+  const extra = useSeatExtra()(seat);
   const Tag = onPick && seat !== view.seat ? 'button' : 'div';
   const fan = Math.min(p.handCount, 13);
   return (
-    <div className={`av av-${pos} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
+    <div className={`av av-${pos} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${extra?.speaking ? 'speaking' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
       <Tag className="av-plate" {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: name }) } : {})}>
-        <span className="av-face" style={{ ['--c' as string]: colorFor(p.name, seat) } as CSSProperties} aria-hidden>{initials(name)}</span>
+        <span className="av-ring" aria-hidden><Face pic={extra?.pic} name={name} color={colorFor(p.name, seat)} className="av-face" /></span>
+        {extra?.voice && <span className={`av-mic ${extra.muted ? 'off' : ''}`} title={extra.muted ? i.t('Microphone off') : i.t('In voice chat')} aria-hidden>{extra.muted ? '🔇' : '🎙'}</span>}
         {badge && <span className={`av-badge ${playing && target != null && won_ >= target ? 'made' : ''}`}>{badge}</span>}
         {view.dealer === seat && <span className="av-dealer" title={i.t('Dealer')}>{i.lang === 'bn' ? 'ড' : 'D'}</span>}
         <span className="av-name">{name}{view.trump.bidder === seat && <em className="av-bidder" title={i.t('bidder')}>★</em>}</span>
@@ -124,18 +116,21 @@ export function HumanHand({ view, dispatch, sort }: { view: PlayerView; dispatch
       {hint && <p className={`hand-hint ${myTurn ? 'go' : ''}`} role="status">{hint}</p>}
       <div className={`hand ${myTurn ? 'my-turn' : ''}`} role="group" aria-label={i.t('Your hand')} style={{ ['--n' as string]: Math.max(cards.length, 2) } as CSSProperties}>
         {cards.map((c, k) => {
+          const mid = k - (cards.length - 1) / 2;
+          const spread = Math.min(2.4, 26 / Math.max(cards.length, 1));
+          const fan = { ['--i' as string]: k, ['--rot' as string]: `${(mid * spread).toFixed(2)}deg`, ['--lift' as string]: `${(Math.abs(mid) ** 1.6 * 0.9).toFixed(1)}px` } as CSSProperties;
           const legal = view.legalCardIds.includes(c.id);
           const reason = myTurn && !legal && led ? i.t('You must follow {suit}', { suit: i.suit(led) }) : '';
           return (
             <button
               key={c.id}
               className={`card-btn in-hand ${myTurn ? (legal ? 'legal' : 'illegal') : ''} ${selected === c.id ? 'selected' : ''}`}
-              style={{ ['--i' as string]: k } as CSSProperties}
+              style={fan}
               disabled={!myTurn || !legal}
               aria-pressed={selected === c.id}
               aria-label={`${i.cardName(c)}${reason ? ` — ${reason}` : ''}`}
               title={reason || undefined}
-              onClick={() => (selected === c.id ? play(c.id) : setSelected(c.id))}
+              onClick={() => { if (selected === c.id) play(c.id); else { setSelected(c.id); playSelect(); } }}
               onDoubleClick={() => play(c.id)}
             >
               <CardFace card={c} size="lg" />

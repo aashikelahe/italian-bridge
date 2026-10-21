@@ -20,7 +20,7 @@ Every point the specification left open is a field in `RuleConfig` (`src/engine/
 | `winCondition` | `reachOrExceed` | `exact` | Spec default; exact-target is offered as the "future" option. |
 | `tieRule` | `playOn` | `shared` | Spec asks for explicit tie handling. Several sides over the target: highest total wins. Tied highest: play another round. |
 | `cutter` | `beforeDealer` | `human` | Traditional; `human` lets you cut every round. |
-| `minBid` / `maxBid` / `passTarget` / `passPoints` | 7 / 13 / 5 / 5 | — | Spec values, kept as data so future variants don't touch the engine. |
+| `minBid` / `maxBid` / `bonusBid` / `bonusPoints` / `passTarget` / `passPoints` | 7 / 10 / 10 / 13 / 5 / 5 | — | Confirmed by the game owner: bids stop at 10 (Bonus), worth 13 when made. |
 
 Other decisions:
 * **Bid of 13** ends the auction immediately; the remaining players are recorded as "auto-pass".

@@ -7,7 +7,14 @@ import type { Difficulty, GameMode, Seat } from '../../engine/types';
 import { SEATS, teamOf } from '../../engine/seating';
 import { MATCH_TARGETS } from '../../engine/config';
 import { cleanName, normalizeCode, PACE_FACTOR, PACE_MS, type Pace, type RoomInfo } from '../../online/protocol';
-import { inviteLink, useServer, type ThrowEvent } from '../../online/net';
+import { inviteLink, memberPic, useServer, type ThrowEvent } from '../../online/net';
+import { useVoice, type Voice } from '../../online/voice';
+import { Face, botEmoji, colorFor, levelOf, useProfile, type PicInfo } from '../profile';
+import { SeatExtraProvider } from '../seatExtras';
+import { storage } from '../storage';
+import { QUICK_PHRASES } from '../quickChat';
+import { playJoin, playVoiceJoin } from '../sound';
+import type { MemberInfo } from '../../online/protocol';
 import type { Settings } from '../storage';
 import type { Sweep } from '../useGameDriver';
 import type { PlayerView } from '../../engine/view';
@@ -23,6 +30,7 @@ interface Props {
   onBack: () => void;
   onToggleLang: () => void;
   onToggleSound: () => void;
+  onProfile: () => void;
   /** Room code from an invite link. */
   inviteCode?: string | null;
 }
@@ -38,7 +46,14 @@ export function OnlineScreen(props: Props) {
   const { reactions, hits, add } = useReactions();
   const onThrow = useCallback((t: ThrowEvent) => add({ from: t.from, to: t.to, e: t.e }), [add]);
   const sm = useSmacks();
-  const srv = useServer(name, onThrow, sm.add);
+  const profile = useProfile();
+  const level = useMemo(() => levelOf(storage.loadStats()).level, []);
+  const profileMsg = useMemo(() => (profile.handle ? { t: 'profile' as const, handle: profile.handle, avatar: profile.avatar, level } : null), [profile.handle, profile.avatar, level]);
+  const rtcRef = useRef<((from: string, data: unknown) => void) | null>(null);
+  const handlers = useMemo(() => ({ onThrow, onSmack: sm.add, onRtc: (f: string, d: unknown) => rtcRef.current?.(f, d) }), [onThrow, sm.add]);
+  const srv = useServer(name, handlers, profileMsg);
+  const voice = useVoice(srv.room, srv.me, srv.send, rtcRef);
+  useRoomSounds(srv.room, srv.me);
   const askedInvite = useRef(false);
 
   // Invite links join automatically once connected (if we already know your name).
@@ -65,6 +80,7 @@ export function OnlineScreen(props: Props) {
     : srv.status === 'connecting' ? i.t('Connecting to the game server… (a sleeping server can take up to a minute to wake up)')
     : i.t('Connection lost. Reconnecting…');
 
+  const profileErr = srv.profileResult && !srv.profileResult.ok ? i.t(srv.profileResult.error ?? 'That player ID is taken. Try another one.') : null;
   const room = srv.room;
   const me = srv.me;
   const mySeat = room && me ? SEATS.find((s) => room.seats[s] === me) ?? null : null;
@@ -72,21 +88,21 @@ export function OnlineScreen(props: Props) {
   if (room && me && room.status !== 'lobby' && mySeat && srv.view) {
     return (
       <OnlineTable {...props} room={room} me={me} view={srv.view} send={srv.send} error={srv.error} clearError={srv.clearError}
-        reactions={reactions} hits={hits} banner={banner} smacks={sm.smacks} />
+        reactions={reactions} hits={hits} banner={banner} smacks={sm.smacks} voice={voice} />
     );
   }
   if (room && me) {
-    return <Lobby {...props} room={room} me={me} send={srv.send} error={srv.error} clearError={srv.clearError} banner={banner} />;
+    return <Lobby {...props} room={room} me={me} send={srv.send} error={srv.error} clearError={srv.clearError} banner={banner ?? profileErr} voice={voice} />;
   }
   return (
     <OnlineHome {...props} name={name} connected={srv.status === 'open'} banner={banner} left={srv.left} clearLeft={srv.clearLeft}
-      error={srv.error} send={srv.send} />
+      error={srv.error ?? (srv.profileResult && !srv.profileResult.ok ? srv.profileResult.error ?? null : null)} send={srv.send} />
   );
 }
 
 type Send = ReturnType<typeof useServer>['send'];
 
-function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, clearLeft, error, send, inviteCode }: Props & {
+function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, clearLeft, error, send, inviteCode, onProfile }: Props & {
   name: string; connected: boolean; banner: string | null; left: string | null; clearLeft: () => void; error: string | null; send: Send;
 }) {
   const i = useI18n();
@@ -129,6 +145,7 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
     <div className="page online-home">
       <header className="page-head"><button className="btn ghost small" onClick={onBack}>{i.t('Back')}</button><h1>{i.t('Play online')}</h1></header>
       {banner && <p className="notice" role="status">{banner}</p>}
+      <ProfileStrip name={cleanName(nick) || i.t('Your name')} onEdit={onProfile} />
       <label className="field">
         <span>{i.t('Your name at the table')}</span>
         <input id="nick" value={nick} maxLength={16} placeholder={i.t('Your name')} onChange={(e) => setNick(e.target.value)} />
@@ -190,13 +207,17 @@ function Chat({ room, me, send, compact }: { room: RoomInfo; me: string; send: S
       <h3>{i.t('Chat')}</h3>
       <ol ref={list} className="chat-list">
         {room.chat.length === 0 && <li className="muted">{i.t('Say hello while you wait.')}</li>}
-        {room.chat.map((m) => (
-          <li key={m.id} className={m.from === me ? 'mine' : ''}>
-            <b>{m.from === me ? i.t('You') : m.name}</b>
-            <span>{m.text}</span>
-          </li>
-        ))}
+        {room.chat.map((m) => {
+          const who = room.members.find((x) => x.id === m.from);
+          return (
+            <li key={m.id} className={m.from === me ? 'mine' : ''}>
+              {m.from !== me && <Face pic={who ? memberPic(who.id, who.pic) : null} name={m.name} color={colorFor(m.name)} className="chat-face" />}
+              <div><b>{m.from === me ? i.t('You') : m.name}</b><span>{m.text}</span></div>
+            </li>
+          );
+        })}
       </ol>
+      <div className="quick-row">{QUICK_PHRASES.map((q) => <button key={q} type="button" className="quick-btn" onClick={() => send({ t: 'chat', text: i.t(q) })}>{i.t(q)}</button>)}</div>
       <form className="chat-form" onSubmit={(e) => { e.preventDefault(); if (text.trim()) { send({ t: 'chat', text }); setText(''); } }}>
         <input id={`chat-${compact ? 'game' : 'lobby'}`} value={text} maxLength={300} onChange={(e) => setText(e.target.value)} placeholder={i.t('Message')} aria-label={i.t('Message')} />
         <button className="btn small brass" type="submit" disabled={!text.trim()}>{i.t('Send')}</button>
@@ -213,7 +234,7 @@ function useToastError(error: string | null, clearError: () => void) {
   }, [error, clearError]);
 }
 
-function Lobby({ room, me, send, error, clearError, banner }: Props & { room: RoomInfo; me: string; send: Send; error: string | null; clearError: () => void; banner: string | null }) {
+function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { room: RoomInfo; me: string; send: Send; error: string | null; clearError: () => void; banner: string | null; voice: Voice }) {
   const i = useI18n();
   useToastError(error, clearError);
   const isHost = room.hostId === me;
@@ -256,14 +277,20 @@ function Lobby({ room, me, send, error, clearError, banner }: Props & { room: Ro
             return (
               <div key={s} className={`seat-slot slot-${s} ${id ? 'taken' : ''} ${mine ? 'mine' : ''} ${room.settings.mode === 'team' ? `team-${teamOf(s)}` : ''}`}>
                 <span className="slot-name">{seatLabel[s]}{room.settings.mode === 'team' && <em> · {i.t(teamOf(s) === 'X' ? 'Team X' : 'Team Y')}</em>}</span>
-                {id ? (
-                  <strong>
-                    <span className={`dot ${m?.online ? 'on' : ''}`} aria-label={m?.online ? i.t('online') : i.t('away')} />
-                    <span>{mine ? i.t('You') : m?.name || i.t('Someone')}</span>
-                    {id === room.hostId && <span className="tag">{i.t('host')}</span>}
-                  </strong>
+                {id && m ? (
+                  <div className="slot-who">
+                    <MemberFace m={m} speaking={voice.speaking.has(m.id)} />
+                    <div className="slot-text">
+                      <strong>
+                        <span className={`dot ${m.online ? 'on' : ''}`} aria-label={m.online ? i.t('online') : i.t('away')} />
+                        <span>{mine ? i.t('You') : m.name || i.t('Someone')}</span>
+                        {id === room.hostId && <span className="tag">{i.t('host')}</span>}
+                      </strong>
+                      {m.handle && <small className="handle">@{m.handle} · {i.t('Lv {n}', { n: m.level ?? 1 })}</small>}
+                    </div>
+                  </div>
                 ) : (
-                  <span className="muted">{i.t('Computer player if empty')}</span>
+                  <div className="slot-who empty"><span className="pface bot-face" aria-hidden>🤖</span><span className="muted">{i.t('Computer player if empty')}</span></div>
                 )}
                 {!id && !playing && <button className="btn small" onClick={() => send({ t: 'sit', seat: s })}>{i.t('Sit here')}</button>}
                 {mine && !playing && <button className="btn small ghost" onClick={() => send({ t: 'stand' })}>{i.t('Stand up')}</button>}
@@ -272,14 +299,17 @@ function Lobby({ room, me, send, error, clearError, banner }: Props & { room: Ro
           })}
           <div className="table-mark" aria-hidden>{room.settings.mode === 'team' ? i.t('Partners sit opposite') : ''}</div>
         </section>
-        <Chat room={room} me={me} send={send} />
+        <div className="lobby-side">
+          <VoiceBar voice={voice} room={room} me={me} />
+          <Chat room={room} me={me} send={send} />
+        </div>
       </div>
 
       <section className="lobby-actions">
         <h3>{i.t('In the lobby')}</h3>
         <ul className="member-list">
           {room.members.map((m) => (
-            <li key={m.id}><span className={`dot ${m.online ? 'on' : ''}`} />{m.id === me ? i.t('You') : m.name}{m.id === room.hostId && <span className="tag">{i.t('host')}</span>}</li>
+            <li key={m.id} className={voice.speaking.has(m.id) ? 'speaking' : ''}><MemberFace m={m} small speaking={voice.speaking.has(m.id)} /><span className={`dot ${m.online ? 'on' : ''}`} />{m.id === me ? i.t('You') : m.name}{m.handle && <small className="handle">@{m.handle}</small>}{m.voice && <span aria-label={i.t('In voice chat')}>{m.muted ? '🔇' : '🎙'}</span>}{m.id === room.hostId && <span className="tag">{i.t('host')}</span>}</li>
           ))}
         </ul>
         {isHost && !playing && (
@@ -325,7 +355,7 @@ function useServerViewEffects(view: PlayerView, pace: Pace, anim: Settings['anim
 function OnlineTable(props: Props & {
   room: RoomInfo; me: string; view: PlayerView; send: Send; error: string | null; clearError: () => void;
   reactions: ReturnType<typeof useReactions>['reactions']; hits: ReturnType<typeof useReactions>['hits']; banner: string | null;
-  smacks: ReturnType<typeof useSmacks>['smacks'];
+  smacks: ReturnType<typeof useSmacks>['smacks']; voice: Voice;
 }) {
   const { room, me, view, send, settings } = props;
   const friends = room.settings.mode === 'team' && room.settings.tableType === 'friends';
@@ -338,10 +368,19 @@ function OnlineTable(props: Props & {
     return names[id] || null;
   }, [room.seats, me, names]);
   const away = room.autoplay.filter((s) => room.seats[s] !== me);
+  const { voice } = props;
+  const extra = useCallback((seat: Seat) => {
+    const id = room.seats[seat];
+    const m = id ? room.members.find((x) => x.id === id) : undefined;
+    if (!m) return { pic: { emoji: botEmoji(view.players[seat]?.name ?? seat) } };
+    return { pic: memberPic(m.id, m.pic), handle: m.handle, level: m.level, voice: m.voice, muted: m.muted, speaking: voice.speaking.has(m.id) };
+  }, [room.seats, room.members, voice.speaking, view.players]);
   return (
     <I18nProvider lang={settings.lang} friends={friends}>
       <SeatNameProvider resolve={resolve}>
-        <TableWithNotices {...props} friends={friends} sweeping={sweeping} away={away} send={send} />
+        <SeatExtraProvider resolve={extra}>
+          <TableWithNotices {...props} friends={friends} sweeping={sweeping} away={away} send={send} />
+        </SeatExtraProvider>
       </SeatNameProvider>
     </I18nProvider>
   );
@@ -350,7 +389,7 @@ function OnlineTable(props: Props & {
 function TableWithNotices(props: Props & {
   room: RoomInfo; me: string; view: PlayerView; send: Send; error: string | null; clearError: () => void;
   reactions: ReturnType<typeof useReactions>['reactions']; hits: ReturnType<typeof useReactions>['hits']; banner: string | null;
-  smacks: ReturnType<typeof useSmacks>['smacks'];
+  smacks: ReturnType<typeof useSmacks>['smacks']; voice: Voice;
   friends: boolean; sweeping: Sweep | null; away: Seat[];
 }) {
   const i = useI18n();
@@ -361,7 +400,8 @@ function TableWithNotices(props: Props & {
     me,
     onSend: (text) => send({ t: 'chat', text }),
     seatOf: (id) => SEATS.find((s) => room.seats[s] === id) ?? null,
-  }), [room.chat, room.seats, me, send]);
+    picOf: (id) => { const m = room.members.find((x) => x.id === id); return m ? memberPic(m.id, m.pic) : null; },
+  }), [room.chat, room.seats, room.members, me, send]);
   const notice = props.banner ?? (awayNames ? i.t('{p} is away — the computer is playing for them until they come back.', { p: awayNames }) : null);
   return (
     <TableScreen
@@ -383,7 +423,77 @@ function TableWithNotices(props: Props & {
       onSmack={() => send({ t: 'smack' })}
       onToggleSound={props.onToggleSound}
       exitLabel={i.t('Leave room')}
+      voice={props.voice}
       notice={notice}
     />
   );
+}
+
+/** Your player card on the online screen. */
+function ProfileStrip({ name, onEdit }: { name: string; onEdit: () => void }) {
+  const i = useI18n();
+  const profile = useProfile();
+  const lv = levelOf(storage.loadStats()).level;
+  const pic: PicInfo | null = profile.avatar ? (profile.avatar.startsWith('e:') ? { emoji: profile.avatar.slice(2) } : { src: profile.avatar }) : null;
+  return (
+    <button className="profile-chip glass wide" onClick={onEdit}>
+      <Face pic={pic} name={name} color={colorFor(name)} />
+      <span className="pc-text">
+        <b>{name}</b>
+        <small>{profile.handle ? `@${profile.handle}` : i.t('Create your player ID and add a photo')} · {i.t('Level {n}', { n: lv })}</small>
+      </span>
+      <span className="pc-edit">{i.t('Edit')}</span>
+    </button>
+  );
+}
+
+function MemberFace({ m, small, speaking }: { m: MemberInfo; small?: boolean; speaking?: boolean }) {
+  return <Face pic={memberPic(m.id, m.pic)} name={m.name} color={colorFor(m.name)} className={`member-face ${small ? 'sm' : ''} ${speaking ? 'speaking' : ''}`} />;
+}
+
+/** Join / mute / leave the room's voice chat. */
+export function VoiceBar({ voice, room, me }: { voice: Voice; room: RoomInfo; me: string }) {
+  const i = useI18n();
+  const inCall = room.members.filter((m) => m.voice);
+  return (
+    <section className={`voice-bar glass ${voice.joined ? 'on' : ''}`} aria-label={i.t('Voice chat')}>
+      <div className="vb-head">
+        <h3>🎧 {i.t('Voice chat')}</h3>
+        <span className="muted">{inCall.length ? i.t('{n} talking here', { n: inCall.length }) : i.t('Nobody in voice yet')}</span>
+      </div>
+      <div className="vb-people">
+        {inCall.map((m) => (
+          <span key={m.id} className={`vb-person ${voice.speaking.has(m.id) ? 'speaking' : ''}`}>
+            <MemberFace m={m} small speaking={voice.speaking.has(m.id)} />
+            {m.id === me ? i.t('You') : m.name}{m.muted ? ' 🔇' : ''}
+          </span>
+        ))}
+      </div>
+      <div className="row-gap">
+        {!voice.joined
+          ? <button className="btn brass" disabled={!voice.supported || voice.joining} onClick={voice.join}>🎙 {voice.joining ? i.t('Connecting…') : i.t('Join voice')}</button>
+          : <>
+              <button className={`btn ${voice.muted ? '' : 'brass'}`} onClick={voice.toggleMute}>{voice.muted ? `🔇 ${i.t('Unmute')}` : `🎙 ${i.t('Mute')}`}</button>
+              <button className="btn ghost" onClick={voice.leave}>{i.t('Leave voice')}</button>
+            </>}
+      </div>
+      {(voice.error || !voice.supported) && <p className="form-error">{i.t(voice.error ?? 'Voice chat does not work in this browser.')}</p>}
+    </section>
+  );
+}
+
+/** Small sounds for people arriving and joining the voice chat. */
+function useRoomSounds(room: RoomInfo | null, me: string | null) {
+  const prev = useRef<RoomInfo | null>(null);
+  useEffect(() => {
+    const p = prev.current;
+    prev.current = room;
+    if (!p || !room || p.code !== room.code) return;
+    const was = new Set(p.members.filter((m) => m.online).map((m) => m.id));
+    if (room.members.some((m) => m.online && m.id !== me && !was.has(m.id))) playJoin();
+    const vWas = new Set(p.members.filter((m) => m.voice).map((m) => m.id));
+    const vNow = new Set(room.members.filter((m) => m.voice).map((m) => m.id));
+    if ([...vNow].some((id) => !vWas.has(id))) playVoiceJoin(true);
+    else if ([...vWas].some((id) => !vNow.has(id))) playVoiceJoin(false);
+  }, [room, me]);
 }

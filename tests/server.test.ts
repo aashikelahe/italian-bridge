@@ -179,6 +179,50 @@ describe('game server rooms', () => {
     rm.handle(guest, { t: 'smack' });
     const got = host.inbox.filter((m): m is Extract<ServerMsg, { t: 'smack' }> => m.t === 'smack').slice(before);
     expect(got.filter((m) => m.seat === 'A')).toHaveLength(1);
+    // Once the next player has played, it is too late.
+    const g = rm.rooms.get(code)!;
+    g.smacked = { trick: 0, seats: [] };
+    playUntil(rm, code, people, () => { const t = g.game?.currentTrick; return !!t && t.plays.length > 0 && t.plays[t.plays.length - 1].seat !== 'A'; });
+    const n = host.inbox.filter((m) => m.t === 'smack' && m.seat === 'A').length;
+    rm.handle(guest, { t: 'smack' });
+    expect(host.inbox.filter((m) => m.t === 'smack' && m.seat === 'A').length).toBe(n);
+  });
+
+  it('player IDs are unique, pictures are checked, and room members show them', () => {
+    const { rm, host, guest } = setup();
+    rm.handle(host, { t: 'profile', handle: 'ashik_07', avatar: 'e:🦁', level: 4 });
+    expect(host.inbox.at(-2)).toEqual({ t: 'profile', ok: true, handle: 'ashik_07' });
+    rm.handle(guest, { t: 'profile', handle: 'ashik_07', avatar: null, level: 1 });
+    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+    rm.handle(guest, { t: 'profile', handle: 'Bad Name!', avatar: null, level: 1 });
+    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+    rm.handle(guest, { t: 'profile', handle: 'rahim', avatar: 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64'), level: 2 });
+    const r = host.lastRoom()!;
+    expect(r.members.find((m) => m.id === 'host')).toMatchObject({ handle: 'ashik_07', pic: 'e:🦁', level: 4 });
+    expect(r.members.find((m) => m.id === 'guest')).toMatchObject({ handle: 'rahim', pic: 'u:1' });
+    expect(rm.profiles.photo('guest')?.[0]).toBe(0xff);
+    // a not-JPEG "photo" is refused
+    rm.handle(guest, { t: 'profile', handle: 'rahim', avatar: 'data:image/jpeg;base64,' + Buffer.from('<svg>').toString('base64'), level: 2 });
+    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+  });
+
+  it('voice: set-up messages are relayed only between voice members of the same room', () => {
+    const { rm, host, guest } = setup();
+    rm.handle(host, { t: 'rtc', to: 'guest', data: { sdp: 'x' } });
+    expect(guest.inbox.some((m) => m.t === 'rtc')).toBe(false);
+    rm.handle(host, { t: 'voice', on: true, muted: false });
+    rm.handle(guest, { t: 'voice', on: true, muted: true });
+    expect(host.lastRoom()!.members.find((m) => m.id === 'guest')).toMatchObject({ voice: true, muted: true });
+    rm.handle(host, { t: 'rtc', to: 'guest', data: { sdp: 'x' } });
+    expect(guest.inbox.at(-1)).toEqual({ t: 'rtc', from: 'host', data: { sdp: 'x' } });
+    const stranger = fake('stranger');
+    rm.handle(stranger, { t: 'create', settings: SETTINGS });
+    rm.handle(stranger, { t: 'voice', on: true, muted: false });
+    const n = guest.inbox.length;
+    rm.handle(stranger, { t: 'rtc', to: 'guest', data: { sdp: 'y' } });
+    expect(guest.inbox.length).toBe(n);
+    rm.disconnected(guest);
+    expect(host.lastRoom()!.members.find((m) => m.id === 'guest')?.voice).toBe(false);
   });
 
   it('joining a missing room says so', () => {

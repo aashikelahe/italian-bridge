@@ -1,16 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Difficulty, GameState } from '../engine/types';
 import { createMatch } from '../engine/game';
 import { secureRng } from '../engine/rng';
 import { storage, type Settings } from './storage';
-import { setSoundEnabled } from './sound';
+import { playClick, setHapticsEnabled, setSoundEnabled } from './sound';
+import { ProfileScreen } from './screens/ProfileScreen';
 import { GameScreen } from './screens/GameScreen';
 import { MainMenu, RulesScreen, SettingsScreen, SetupScreen, StatsScreen } from './screens/MenuScreens';
 import { OnlineScreen } from './screens/Online';
 import { I18nProvider } from './i18n';
 import { normalizeCode } from '../online/protocol';
 
-type Screen = 'menu' | 'setup' | 'game' | 'rules' | 'settings' | 'stats' | 'online';
+type Screen = 'menu' | 'setup' | 'game' | 'rules' | 'settings' | 'stats' | 'online' | 'profile';
 
 export const AI_NAMES = { A: 'Nadia', B: 'Rafi', D: 'Tanvir' } as const;
 
@@ -45,11 +46,22 @@ function wasInRoom(): boolean {
 
 export function App() {
   const [invite] = useState(inviteFromUrl);
+  const [back, setBack] = useState<Screen>('menu');
   const [screen, setScreen] = useState<Screen>(() => (invite || wasInRoom() ? 'online' : 'menu'));
   const [settings, setSettingsState] = useState<Settings>(() => storage.loadSettings());
   const [game, setGame] = useState<{ state: GameState; difficulty: Difficulty; friends: boolean } | null>(null);
   const [hasSave, setHasSave] = useState(() => !!storage.loadGame());
   setSoundEnabled(settings.sound);
+  setHapticsEnabled(settings.haptics);
+  // A soft tick for every button press.
+  useEffect(() => {
+    const on = (e: PointerEvent) => {
+      const b = (e.target as HTMLElement | null)?.closest?.('button');
+      if (b && !b.disabled && !b.classList.contains('card-btn') && !b.classList.contains('act-btn')) playClick();
+    };
+    document.addEventListener('pointerdown', on, { passive: true });
+    return () => document.removeEventListener('pointerdown', on);
+  }, []);
 
   const saveSettings = (s: Settings) => { setSettingsState(s); storage.saveSettings(s); };
   const toggleLang = () => saveSettings({ ...settings, lang: settings.lang === 'bn' ? 'en' : 'bn' });
@@ -84,7 +96,7 @@ export function App() {
       ) : null;
       break;
     case 'online':
-      body = <OnlineScreen settings={settings} saveSettings={saveSettings} onBack={() => setScreen('menu')} onToggleLang={toggleLang} onToggleSound={toggleSound} inviteCode={invite} />;
+      body = <OnlineScreen settings={settings} saveSettings={saveSettings} onBack={() => setScreen('menu')} onToggleLang={toggleLang} onToggleSound={toggleSound} inviteCode={invite} onProfile={() => { setBack('online'); setScreen('profile'); }} />;
       break;
     case 'setup':
       body = <SetupScreen settings={settings} onStart={start} onBack={() => setScreen('menu')} />;
@@ -94,6 +106,9 @@ export function App() {
       break;
     case 'settings':
       body = <SettingsScreen settings={settings} onSave={saveSettings} onBack={() => setScreen('menu')} />;
+      break;
+    case 'profile':
+      body = <ProfileScreen settings={settings} onSave={saveSettings} onBack={() => setScreen(back)} />;
       break;
     case 'stats':
       body = <StatsScreen onBack={() => setScreen('menu')} />;
@@ -109,9 +124,10 @@ export function App() {
             const g = storage.loadGame();
             if (g) { setGame({ state: g.state, difficulty: g.difficulty, friends: !!g.friends }); setScreen('game'); }
           }}
-          onGo={setScreen}
+          onGo={(s) => { setBack('menu'); setScreen(s); }}
+          settings={settings}
         />
       );
   }
-  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang}`}>{body}</div></I18nProvider>;
+  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang} theme-${settings.theme} back-${settings.cardBack}`}>{body}</div></I18nProvider>;
 }
