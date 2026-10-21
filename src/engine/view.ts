@@ -5,7 +5,7 @@
  */
 import type {
   BidStatus, BiddingState, Card, GameMode, GameState, LogEntry, MatchWinner, Phase, PlayedCard, PlayerType,
-  RevealHow, RoundSummary, RuleConfig, Seat, Suit, Team, TrickRecord,
+  RevealHow, RoundSummary, RuleConfig, Seat, Suit, Team, TrickRecord, BonusState,
 } from './types';
 import { SEATS, teamOf } from './seating';
 import { canRequestReveal, canRevealVoluntarily, type RevealContext } from './rules';
@@ -70,6 +70,8 @@ export interface PlayerView {
   /** I revealed / asked to see the trump: I must play a trump-suit card now if I have one. */
   mustPlayTrump: boolean;
   lastShuffle: GameState['lastShuffle'];
+  /** The Bonus call round (after the second deal). */
+  bonus: BonusState | null;
 }
 
 export function getPlayerView(state: GameState, seat: Seat): PlayerView {
@@ -131,6 +133,7 @@ export function getPlayerView(state: GameState, seat: Seat): PlayerView {
     canCallReshuffle: reshuffleAllowed(state, seat),
     mustPlayTrump: state.trump.mustPlayTrump === seat,
     lastShuffle: state.lastShuffle,
+    bonus: state.bonus ? structuredClone(state.bonus) : null,
   };
 }
 

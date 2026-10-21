@@ -51,7 +51,12 @@ Defined in `src/online/protocol.ts`.
 * Anyone in a room can press **Join voice** in the lobby or 🎙 on the table. Everyone in the voice chat hears everyone else; the 🎙 button then mutes and unmutes you. A green ring shows who is talking.
 * Sound goes directly between the players' browsers (WebRTC, audio only). The game server only passes the set-up messages along and never hears anything.
 * It needs a secure page (https — Render and aashik.xyz both are) and microphone permission.
-* It uses public STUN servers only. On most home Wi-Fi and mobile data it connects; on some strict office or campus networks two players may not be able to hear each other. Fixing that needs a TURN relay service (paid or self-hosted), which can be added to `ICE_SERVERS` in `src/online/voice.ts`.
+* Direct links use public STUN servers. When two players can't reach each other directly (common on mobile data), sound goes through a relay (TURN). The server hands out short-lived relay passwords in its `welcome` message: by default for the free Open Relay project (`staticauth.openrelay.metered.ca`); set `TURN_URLS` (comma separated) and `TURN_SECRET` on Render to use your own relay instead (for example a free Metered account or coturn).
+* Each person's link to every other person is watched: a link that fails or doesn't connect within a few seconds is rebuilt automatically, and a player whose connection drops is reconnected to everyone when they come back. The voice panel shows "connecting…" next to anyone you can't hear yet.
+
+## Team names
+
+When creating a two-team room, the host can name both teams (North & South, East & West). The names show in the lobby, the score sheet and the results.
 
 ## Other table features
 

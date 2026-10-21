@@ -58,6 +58,7 @@ export type Phase =
   | 'BIDDING'
   | 'TRUMP_RESERVATION'
   | 'SECOND_DEAL'
+  | 'BONUS_CALL'
   | 'THIRD_DEAL'
   | 'PLAYING'
   | 'MANDATORY_REVEAL'
@@ -193,6 +194,9 @@ export interface RuleConfig {
   /** The top bid is a bonus call: making it scores bonusPoints instead of the bid. null = no bonus. */
   bonusBid: number | null;
   bonusPoints: number;
+  /** After the second deal (9 cards each) everyone may call the Bonus (10) and then higher, up to maxBonusBid. */
+  bonusRound: 'afterSecondDeal' | 'off';
+  maxBonusBid: number;
   passTarget: number;
   passPoints: number;
   winCondition: WinCondition;
@@ -234,6 +238,18 @@ export interface GameState {
   sharedWinners: string[] | null;
   /** Set when a tie at the top forced another round (tieRule = playOn). */
   tieNote: string | null;
+  /** The Bonus call round after the second deal (null outside it / in older saves). */
+  bonus?: BonusState | null;
+}
+
+export interface BonusState {
+  starter: Seat;
+  history: { seat: Seat; action: 'call' | 'pass' | 'auto-pass'; amount?: number }[];
+  /** Highest Bonus call so far. */
+  caller: Seat | null;
+  amount: number | null;
+  /** Lowest call allowed next. */
+  minNext: number;
 }
 
 export type Action =
@@ -245,6 +261,8 @@ export type Action =
   | { type: 'CALL_RESHUFFLE'; seat: Seat }
   | { type: 'RESERVE'; seat: Seat; cardId: string }
   | { type: 'DEAL_SECOND' }
+  | { type: 'BONUS_CALL'; seat: Seat; amount: number }
+  | { type: 'BONUS_PASS'; seat: Seat }
   | { type: 'DEAL_THIRD' }
   | { type: 'REVEAL_VOLUNTARY'; seat: Seat }
   | { type: 'REQUEST_REVEAL'; seat: Seat }

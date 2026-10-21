@@ -11,31 +11,35 @@ export class Profiles {
   private byId = new Map<string, Profile>();
   private handles = new Map<string, string>();
 
-  /** Returns an error message, or null when saved. */
+  /**
+   * Save a player's picture and (optional) player ID. The picture is always kept, even when the
+   * ID is refused. Returns an error message about the ID or the photo, or null.
+   */
   set(id: string, rawHandle: string, avatar: string | null, level: number): string | null {
-    const handle = String(rawHandle ?? '').toLowerCase();
-    if (!HANDLE_RE.test(handle)) return 'Player IDs use 3–16 letters, numbers or _.';
-    const owner = this.handles.get(handle);
-    if (owner && owner !== id) return 'That player ID is taken. Try another one.';
+    let error: string | null = null;
     let pic: string | null = null;
     let photo: Buffer | null = null;
     if (typeof avatar === 'string' && avatar.startsWith('e:')) {
       const e = avatar.slice(2);
       if ((PRESET_AVATARS as readonly string[]).includes(e)) pic = `e:${e}`;
     } else if (typeof avatar === 'string' && avatar.startsWith('data:image/jpeg;base64,')) {
-      if (avatar.length > MAX_PHOTO_CHARS) return 'That photo is too large.';
-      const buf = Buffer.from(avatar.slice('data:image/jpeg;base64,'.length), 'base64');
-      if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) return 'That photo could not be read.';
-      photo = buf;
+      const buf = avatar.length > MAX_PHOTO_CHARS ? null : Buffer.from(avatar.slice('data:image/jpeg;base64,'.length), 'base64');
+      if (!buf) error = 'That photo is too large.';
+      else if (buf.length < 4 || buf[0] !== 0xff || buf[1] !== 0xd8) error = 'That photo could not be read.';
+      else photo = buf;
     }
     const old = this.byId.get(id);
-    if (old && old.handle !== handle) this.handles.delete(old.handle);
+    let handle = String(rawHandle ?? '').toLowerCase();
+    if (handle && !HANDLE_RE.test(handle)) { error = 'Player IDs use 3–16 letters, numbers or _.'; handle = ''; }
+    const owner = handle ? this.handles.get(handle) : undefined;
+    if (owner && owner !== id) { error = 'That player ID is taken. Try another one.'; handle = ''; }
+    if (old?.handle && old.handle !== handle) this.handles.delete(old.handle);
     const same = old && old.photo && photo && old.photo.equals(photo);
     const ver = same ? old!.ver : (old?.ver ?? 0) + 1;
     if (photo) pic = `u:${ver}`;
     this.byId.set(id, { handle, pic, photo, ver, level: Math.max(1, Math.min(99, Math.floor(Number(level) || 1))) });
-    this.handles.set(handle, id);
-    return null;
+    if (handle) this.handles.set(handle, id);
+    return error;
   }
 
   get(id: string): Profile | undefined { return this.byId.get(id); }

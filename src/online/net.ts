@@ -86,6 +86,8 @@ export interface ServerState {
   error: string | null;
   /** Set when the server says we are no longer in a room. */
   left: 'left' | 'closed' | 'missing' | null;
+  /** Relay servers for voice chat, from the game server. */
+  ice?: RTCIceServer[] | null;
 }
 
 /** Connects while mounted. `name` is your table name; changing it renames you. */
@@ -134,7 +136,7 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
         switch (m.t) {
           case 'welcome': {
             ready.current = true;
-            setSt((s) => ({ ...s, status: 'open', me: m.id }));
+            setSt((s) => ({ ...s, status: 'open', me: m.id, ice: m.ice ?? null }));
             // Rejoin the room we were in, then send anything queued while offline.
             if (profileRef.current) sock.send(JSON.stringify(profileRef.current));
             const room = lsGet(ROOM_KEY);

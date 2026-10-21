@@ -34,13 +34,19 @@ export const DEFAULT_RULES: RuleConfig = {
   trumpEffect: 'afterReveal',
   // A player outbid during the auction ends it as a passer (their last action). (assumption)
   outbidPlayersScoreAs: 'pass',
-  // Section 8B is titled "Opponent requests a reveal": in team mode the bidder's partner may not. (assumption)
-  partnerMayRequestReveal: false,
+  // Anyone who cannot follow suit — the bidder's partner too — may ask to see the trump. (confirmed by the game owner)
+  partnerMayRequestReveal: true,
   minBid: 7,
   // Bids are 7 (Small), 8, 9 or 10 (Bonus). Making a 10 scores 13; failing it costs 10. (confirmed by the game owner)
   maxBid: 10,
   bonusBid: 10,
   bonusPoints: 13,
+  // After the second deal each player in turn may call the Bonus (10); after a Bonus call the
+  // next players may only go higher (11, 12, 13). A 13 ends it. The highest caller takes over
+  // the contract (and picks a new trump if they were not already the bidder). (confirmed by the game owner)
+  // Calls above 10 score 13 + 1 per extra trick when made (assumption) and lose the call when missed.
+  bonusRound: 'afterSecondDeal',
+  maxBonusBid: 13,
   passTarget: 5,
   passPoints: 5,
   winCondition: 'reachOrExceed',

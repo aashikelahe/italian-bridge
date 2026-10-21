@@ -192,18 +192,21 @@ describe('game server rooms', () => {
     const { rm, host, guest } = setup();
     rm.handle(host, { t: 'profile', handle: 'ashik_07', avatar: 'e:🦁', level: 4 });
     expect(host.inbox.at(-2)).toEqual({ t: 'profile', ok: true, handle: 'ashik_07' });
-    rm.handle(guest, { t: 'profile', handle: 'ashik_07', avatar: null, level: 1 });
-    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+    rm.handle(guest, { t: 'profile', handle: 'ashik_07', avatar: 'e:🐼', level: 1 });
+    expect(guest.inbox.find((m) => m.t === 'profile')).toMatchObject({ t: 'profile', ok: false });
+    // the picture is kept even though the ID was refused
+    expect(host.lastRoom()!.members.find((m) => m.id === 'guest')).toMatchObject({ handle: null, pic: 'e:🐼' });
+    const lastProfile = () => [...guest.inbox].reverse().find((m) => m.t === 'profile');
     rm.handle(guest, { t: 'profile', handle: 'Bad Name!', avatar: null, level: 1 });
-    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+    expect(lastProfile()).toMatchObject({ t: 'profile', ok: false });
     rm.handle(guest, { t: 'profile', handle: 'rahim', avatar: 'data:image/jpeg;base64,' + Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]).toString('base64'), level: 2 });
     const r = host.lastRoom()!;
     expect(r.members.find((m) => m.id === 'host')).toMatchObject({ handle: 'ashik_07', pic: 'e:🦁', level: 4 });
-    expect(r.members.find((m) => m.id === 'guest')).toMatchObject({ handle: 'rahim', pic: 'u:1' });
+    expect(r.members.find((m) => m.id === 'guest')).toMatchObject({ handle: 'rahim', pic: expect.stringMatching(/^u:\d+$/) });
     expect(rm.profiles.photo('guest')?.[0]).toBe(0xff);
     // a not-JPEG "photo" is refused
     rm.handle(guest, { t: 'profile', handle: 'rahim', avatar: 'data:image/jpeg;base64,' + Buffer.from('<svg>').toString('base64'), level: 2 });
-    expect(guest.inbox.at(-1)).toMatchObject({ t: 'profile', ok: false });
+    expect(lastProfile()).toMatchObject({ t: 'profile', ok: false });
   });
 
   it('voice: set-up messages are relayed only between voice members of the same room', () => {

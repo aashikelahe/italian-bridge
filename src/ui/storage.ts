@@ -26,6 +26,8 @@ export interface Settings {
   cardBack: CardBackStyle;
   /** Vibrate on your turn and on smacks (phones). */
   haptics: boolean;
+  /** Version of the saved house rules, to switch old saves to newly confirmed defaults. */
+  rulesRev?: number;
 }
 
 export type TableTheme = 'emerald' | 'royal' | 'crimson' | 'midnight';
@@ -102,7 +104,11 @@ export const storage = {
       // The core numbers are not house rules: always the current ones.
       minBid: DEFAULT_RULES.minBid, maxBid: DEFAULT_RULES.maxBid, bonusBid: DEFAULT_RULES.bonusBid, bonusPoints: DEFAULT_RULES.bonusPoints,
       passTarget: DEFAULT_RULES.passTarget, passPoints: DEFAULT_RULES.passPoints,
-    }, teamNames: { ...DEFAULT_SETTINGS.teamNames, ...(s?.teamNames ?? {}) } };
+      bonusRound: DEFAULT_RULES.bonusRound, maxBonusBid: DEFAULT_RULES.maxBonusBid,
+      // Rules confirmed after a player saved settings (rev 2: the partner may ask to see the trump).
+      ...((s?.rulesRev ?? 0) < 2 ? { partnerMayRequestReveal: true } : {}),
+    },
+    rulesRev: 2, teamNames: { ...DEFAULT_SETTINGS.teamNames, ...(s?.teamNames ?? {}) } };
   },
   saveSettings: (s: Settings) => write(KEY.settings, s),
   loadGame: (): SavedGame | null => {

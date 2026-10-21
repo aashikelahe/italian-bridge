@@ -19,7 +19,7 @@ export const HUMAN: Seat = 'C';
 // Milliseconds at normal speed. Tuned to a relaxed, real-table pace.
 const BASE_DELAY: Record<string, number> = {
   SHUFFLE: 1700, CUT: 1200, INITIAL_DEAL: 1100, BIDDING: 1500, TRUMP_RESERVATION: 1500,
-  SECOND_DEAL: 1700, THIRD_DEAL: 1700, PLAYING: 1150, MANDATORY_REVEAL: 2500,
+  SECOND_DEAL: 1700, BONUS_CALL: 1600, THIRD_DEAL: 1700, PLAYING: 1150, MANDATORY_REVEAL: 2500,
   TRICK_SHOW: 1500, TRICK_GATHER: 380, TRICK_SLIDE: 800,
 };
 const SPEED: Record<AnimSpeed, number> = { normal: 1, fast: 0.55, reduced: 0.6 };

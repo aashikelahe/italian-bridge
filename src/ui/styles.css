@@ -1141,3 +1141,37 @@ body { background: var(--page); }
 .tbl .bid-panel .reshuffle-offer { order: 3; margin-top: 0.5rem; }
 .tbl .bid-panel .prompt { order: 4; font-size: 0.85em; opacity: 0.85; }
 @media (max-height: 420px) { .tbl .bid-panel .prompt:not(.muted) { display: none; } }
+
+/* ---------- v3.1 ---------- */
+.team-names { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.team-names .field input { max-width: none; width: 100%; }
+@media (max-width: 520px) { .team-names { grid-template-columns: 1fr; } }
+
+/* bigger trick / call badges on the avatars */
+.av-badge { font-size: 0.95rem; min-width: 38px; padding: 2px 9px; top: -8px; right: calc(var(--av) * -0.42); border-width: 2px; }
+.av-bottom .av-badge { font-size: 1rem; padding: 2px 10px; }
+@media (max-height: 500px) {
+  .av-badge { font-size: 0.84rem; min-width: 32px; padding: 1px 7px; }
+  .av-bottom .av-badge { font-size: 0.9rem; }
+}
+
+/* the hand always fits: leave room for the fan's tilted outer cards */
+.tbl-hand { --span: calc(100cqw - 28px - var(--hw) * 0.55); }
+@media (orientation: portrait) {
+  .tbl-hand { --span: calc(100cqw - 36px - var(--hw) * 0.7); }
+  .tbl-hand .card-btn.in-hand { transform: translateY(calc(var(--lift, 0px) * 0.5)) rotate(calc(var(--rot, 0deg) * 0.45)); }
+  .tbl-hand .card-btn.legal:hover, .tbl-hand .card-btn.legal:focus-visible { transform: translateY(calc(var(--lift, 0px) * 0.5 - 10%)) rotate(calc(var(--rot, 0deg) * 0.45)); }
+  .tbl-hand .hand { padding-left: 10px; }
+}
+
+/* Bonus calls */
+.btn.bid.bonus.high:not(:disabled) { background: linear-gradient(180deg, #ffb36b, #e0602a 55%, #8a2c0c); border-color: #ffd7b0; box-shadow: 0 3px 0 #561a06, 0 0 20px rgba(255,120,40,0.45), inset 0 1px 0 rgba(255,255,255,0.5); }
+.bonus-panel h3 { color: #ffd0e8; }
+
+/* voice link state */
+.link-note { font-size: 0.7rem; color: var(--gold-2); margin-left: 2px; }
+.vb-person.link-trouble { outline: 1px dashed rgba(255,120,120,0.6); }
+.av-mic.linking { background: #3a3010; animation: pulse-dim 1s ease-in-out infinite alternate; }
+@keyframes pulse-dim { to { opacity: 0.5; } }
+.av-top { top: 12px; }
+@media (orientation: portrait) { .tbl-hand .hand-hint { max-width: 32cqw; font-size: 0.72rem; } }

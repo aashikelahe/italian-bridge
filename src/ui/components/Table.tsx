@@ -46,7 +46,7 @@ export function Avatar({ view, seat, devHand, won, hit, bubble, onPick }: {
     <div className={`av av-${pos} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${extra?.speaking ? 'speaking' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
       <Tag className="av-plate" {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: name }) } : {})}>
         <span className="av-ring" aria-hidden><Face pic={extra?.pic} name={name} color={colorFor(p.name, seat)} className="av-face" /></span>
-        {extra?.voice && <span className={`av-mic ${extra.muted ? 'off' : ''}`} title={extra.muted ? i.t('Microphone off') : i.t('In voice chat')} aria-hidden>{extra.muted ? '🔇' : '🎙'}</span>}
+        {extra?.voice && <span className={`av-mic ${extra.muted ? 'off' : ''} ${extra.link && extra.link !== 'connected' ? 'linking' : ''}`} title={extra.link && extra.link !== 'connected' ? i.t('connecting…') : extra.muted ? i.t('Microphone off') : i.t('In voice chat')} aria-hidden>{extra.link && extra.link !== 'connected' ? '⏳' : extra.muted ? '🔇' : '🎙'}</span>}
         {badge && <span className={`av-badge ${playing && target != null && won_ >= target ? 'made' : ''}`}>{badge}</span>}
         {view.dealer === seat && <span className="av-dealer" title={i.t('Dealer')}>{i.lang === 'bn' ? 'ড' : 'D'}</span>}
         <span className="av-name">{name}{view.trump.bidder === seat && <em className="av-bidder" title={i.t('bidder')}>★</em>}</span>

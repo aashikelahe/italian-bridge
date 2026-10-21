@@ -48,11 +48,11 @@ export function OnlineScreen(props: Props) {
   const sm = useSmacks();
   const profile = useProfile();
   const level = useMemo(() => levelOf(storage.loadStats()).level, []);
-  const profileMsg = useMemo(() => (profile.handle ? { t: 'profile' as const, handle: profile.handle, avatar: profile.avatar, level } : null), [profile.handle, profile.avatar, level]);
+  const profileMsg = useMemo(() => (profile.handle || profile.avatar ? { t: 'profile' as const, handle: profile.handle, avatar: profile.avatar, level } : null), [profile.handle, profile.avatar, level]);
   const rtcRef = useRef<((from: string, data: unknown) => void) | null>(null);
   const handlers = useMemo(() => ({ onThrow, onSmack: sm.add, onRtc: (f: string, d: unknown) => rtcRef.current?.(f, d) }), [onThrow, sm.add]);
   const srv = useServer(name, handlers, profileMsg);
-  const voice = useVoice(srv.room, srv.me, srv.send, rtcRef);
+  const voice = useVoice(srv.room, srv.me, srv.send, rtcRef, srv.ice ?? null);
   useRoomSounds(srv.room, srv.me);
   const askedInvite = useRef(false);
 
@@ -113,6 +113,8 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
   const [tableType, setTableType] = useState(settings.tableType);
   const [difficulty, setDifficulty] = useState<Difficulty>(settings.difficulty);
   const [pace, setPace] = useState<Pace>(settings.anim === 'fast' ? 'fast' : 'normal');
+  const [teamX, setTeamX] = useState(lsTeam('X'));
+  const [teamY, setTeamY] = useState(lsTeam('Y'));
   const [err, setErr] = useState<string | null>(null);
   const recent = recentRooms();
 
@@ -129,7 +131,9 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
   const create = () => {
     if (needName()) return;
     setErr(null); clearLeft(); remember();
-    send({ t: 'create', settings: { mode, matchTarget: target, tableType: mode === 'team' ? tableType : 'regular', difficulty, pace, rules: settings.rules } });
+    const tn = { X: cleanName(teamX) || 'Team X', Y: cleanName(teamY) || 'Team Y' };
+    try { localStorage.setItem('ib.teamNames', JSON.stringify(tn)); } catch { /* ignore */ }
+    send({ t: 'create', settings: { mode, matchTarget: target, tableType: mode === 'team' ? tableType : 'regular', difficulty, pace, rules: settings.rules, teamNames: tn } });
   };
   const join = (raw: string) => {
     const code = normalizeCode(raw);
@@ -169,6 +173,12 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
             <label key={m} className={mode === m ? 'on' : ''}><input type="radio" checked={mode === m} onChange={() => setMode(m)} />{m === 'team' ? i.t('Two teams') : i.t('Individual')}</label>
           ))}
         </div>
+        {mode === 'team' && (
+          <div className="team-names">
+            <label className="field"><span>{i.t('Team 1 name (North & South)')}</span><input id="team-x" value={teamX} maxLength={16} placeholder={i.t('Team X')} onChange={(e) => setTeamX(e.target.value)} /></label>
+            <label className="field"><span>{i.t('Team 2 name (East & West)')}</span><input id="team-y" value={teamY} maxLength={16} placeholder={i.t('Team Y')} onChange={(e) => setTeamY(e.target.value)} /></label>
+          </div>
+        )}
         {mode === 'team' && (
           <div className="seg-opts">
             <label className={tableType === 'regular' ? 'on' : ''}><input type="radio" checked={tableType === 'regular'} onChange={() => setTableType('regular')} />{i.t('Regular')}</label>
@@ -262,7 +272,7 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
       </header>
       <p className="muted">{i.t('Send your friends this link, or tell them the code {c}:', { c: room.code })} <span className="invite-link">{link}</span></p>
       <p className="lobby-settings">
-        {room.settings.mode === 'team' ? i.t('Two teams') : i.t('Individual')}
+        {room.settings.mode === 'team' ? `${teamName(room, 'X', i)} ${i.t('vs')} ${teamName(room, 'Y', i)}` : i.t('Individual')}
         {room.settings.mode === 'team' && ` · ${room.settings.tableType === 'friends' ? i.t('Friends table') : i.t('Regular table')}`}
         {` · ${i.t('{n} points', { n: room.settings.matchTarget })}`}
       </p>
@@ -276,7 +286,7 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
             const mine = id === me;
             return (
               <div key={s} className={`seat-slot slot-${s} ${id ? 'taken' : ''} ${mine ? 'mine' : ''} ${room.settings.mode === 'team' ? `team-${teamOf(s)}` : ''}`}>
-                <span className="slot-name">{seatLabel[s]}{room.settings.mode === 'team' && <em> · {i.t(teamOf(s) === 'X' ? 'Team X' : 'Team Y')}</em>}</span>
+                <span className="slot-name">{seatLabel[s]}{room.settings.mode === 'team' && <em> · {teamName(room, teamOf(s), i)}</em>}</span>
                 {id && m ? (
                   <div className="slot-who">
                     <MemberFace m={m} speaking={voice.speaking.has(m.id)} />
@@ -373,8 +383,8 @@ function OnlineTable(props: Props & {
     const id = room.seats[seat];
     const m = id ? room.members.find((x) => x.id === id) : undefined;
     if (!m) return { pic: { emoji: botEmoji(view.players[seat]?.name ?? seat) } };
-    return { pic: memberPic(m.id, m.pic), handle: m.handle, level: m.level, voice: m.voice, muted: m.muted, speaking: voice.speaking.has(m.id) };
-  }, [room.seats, room.members, voice.speaking, view.players]);
+    return { pic: memberPic(m.id, m.pic), handle: m.handle, level: m.level, voice: m.voice, muted: m.muted, speaking: voice.speaking.has(m.id), link: voice.joined && m.id !== me && m.voice ? voice.links[m.id] ?? 'connecting' : undefined };
+  }, [room.seats, room.members, voice.speaking, voice.links, voice.joined, me, view.players]);
   return (
     <I18nProvider lang={settings.lang} friends={friends}>
       <SeatNameProvider resolve={resolve}>
@@ -463,9 +473,12 @@ export function VoiceBar({ voice, room, me }: { voice: Voice; room: RoomInfo; me
       </div>
       <div className="vb-people">
         {inCall.map((m) => (
-          <span key={m.id} className={`vb-person ${voice.speaking.has(m.id) ? 'speaking' : ''}`}>
+          <span key={m.id} className={`vb-person ${voice.speaking.has(m.id) ? 'speaking' : ''} ${voice.joined && m.id !== me ? `link-${voice.links[m.id] ?? 'connecting'}` : ''}`}>
             <MemberFace m={m} small speaking={voice.speaking.has(m.id)} />
             {m.id === me ? i.t('You') : m.name}{m.muted ? ' 🔇' : ''}
+            {voice.joined && m.id !== me && voice.links[m.id] !== 'connected' && (
+              <small className="link-note">{voice.links[m.id] === 'trouble' ? i.t('reconnecting…') : i.t('connecting…')}</small>
+            )}
           </span>
         ))}
       </div>
@@ -496,4 +509,12 @@ function useRoomSounds(room: RoomInfo | null, me: string | null) {
     if ([...vNow].some((id) => !vWas.has(id))) playVoiceJoin(true);
     else if ([...vWas].some((id) => !vNow.has(id))) playVoiceJoin(false);
   }, [room, me]);
+}
+
+function lsTeam(k: 'X' | 'Y'): string {
+  try { const v = JSON.parse(localStorage.getItem('ib.teamNames') ?? '{}')[k]; return typeof v === 'string' && v !== `Team ${k}` ? v : ''; } catch { return ''; }
+}
+function teamName(room: RoomInfo, t: 'X' | 'Y', i: ReturnType<typeof useI18n>): string {
+  const n = room.settings.teamNames?.[t];
+  return n && n !== `Team ${t}` ? n : i.t(t === 'X' ? 'Team X' : 'Team Y');
 }

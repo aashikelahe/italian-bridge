@@ -172,14 +172,14 @@ describe('reserved trump card', () => {
     expect(applyAction(st, { type: 'REQUEST_REVEAL', seat: 'A' }).ok).toBe(false);
   });
 
-  it('team mode: the bidder’s partner may not request the reveal by default', () => {
+  it('team mode: the bidder’s partner may ask to see the trump when void (default); the option can forbid it', () => {
     const { s } = toPlaying(2, 'A', undefined, 'team');
     let st = setHands(s, { B: ['9S'], C: ['3D'], D: ['KS'], A: ['5S'] }, { seat: 'A', id: '2H' });
     st = mustApply(st, { type: 'PLAY_CARD', seat: 'B', cardId: '9S' });
-    expect(applyAction(st, { type: 'REQUEST_REVEAL', seat: 'C' }).ok).toBe(false); // C is A's partner
-    const s2 = setHands(toPlaying(2, 'A', { partnerMayRequestReveal: true }, 'team').s, { B: ['9S'], C: ['3D'], D: ['KS'], A: ['5S'] }, { seat: 'A', id: '2H' });
+    expect(applyAction(st, { type: 'REQUEST_REVEAL', seat: 'C' }).ok).toBe(true); // C is A's partner
+    const s2 = setHands(toPlaying(2, 'A', { partnerMayRequestReveal: false }, 'team').s, { B: ['9S'], C: ['3D'], D: ['KS'], A: ['5S'] }, { seat: 'A', id: '2H' });
     const s3 = mustApply(s2, { type: 'PLAY_CARD', seat: 'B', cardId: '9S' });
-    expect(applyAction(s3, { type: 'REQUEST_REVEAL', seat: 'C' }).ok).toBe(true);
+    expect(applyAction(s3, { type: 'REQUEST_REVEAL', seat: 'C' }).ok).toBe(false);
   });
 
   it('mandatory reveal happens after trick 12 and before any card of trick 13', () => {

@@ -12,7 +12,8 @@ export function newMatch(opts: { mode?: 'individual' | 'team'; target?: number; 
     mode: opts.mode ?? 'individual',
     matchTarget: opts.target ?? 30,
     players: ALL_AI,
-    rules: opts.rules,
+    // Most rule tests skip the Bonus call round; tests/bonus.test.ts covers it.
+    rules: { bonusRound: 'off', ...opts.rules },
     dealer: opts.dealer ?? 'D',
     rng: seededRng(opts.seed ?? 1),
   });

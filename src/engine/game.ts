@@ -78,6 +78,7 @@ export function createMatch(opts: NewMatchOptions): GameState {
     teams,
     bidding: { starter: dealer, history: [], highestBid: null, highestBidder: null, passed: [] },
     trump: emptyTrump(),
+    bonus: null,
     currentTrick: null,
     pendingLeader: null,
     completedTricks: [],
@@ -227,6 +228,36 @@ function forceMinimumBid(state: GameState) {
   finishBidding(state);
 }
 
+/** End of the Bonus call round: the highest caller plays for their call. */
+function finishBonus(state: GameState) {
+  const bo = state.bonus!;
+  state.currentPlayer = null;
+  if (!bo.caller || bo.amount == null) {
+    state.phase = 'THIRD_DEAL';
+    log(state, 'Nobody called the Bonus.');
+    return;
+  }
+  const caller = bo.caller;
+  const old = state.trump.bidder!;
+  state.bidding.highestBid = bo.amount;
+  state.bidding.highestBidder = caller;
+  state.players[caller].bid = { kind: 'bid', amount: bo.amount };
+  state.players[caller].highestOwnBid = Math.max(state.players[caller].highestOwnBid ?? 0, bo.amount);
+  if (caller === old) {
+    state.phase = 'THIRD_DEAL';
+    log(state, '{p} now plays for {n}.', { p: caller, n: bo.amount });
+    return;
+  }
+  // Someone else takes over: the old bidder gets their hidden card back, the caller picks a new trump.
+  const prev = state.players[old];
+  if (prev.reserved) { prev.hand.push(prev.reserved); prev.reserved = null; }
+  prev.bid = state.config.outbidPlayersScoreAs === 'ownHighestBid' && prev.highestOwnBid != null ? { kind: 'bid', amount: prev.highestOwnBid } : { kind: 'pass' };
+  state.trump = { ...emptyTrump(), bidder: caller };
+  state.phase = 'TRUMP_RESERVATION';
+  state.currentPlayer = caller;
+  log(state, '{p} takes over with {n} and picks a new trump.', { p: caller, n: bo.amount });
+}
+
 /** After each bidding action decide whether bidding is over, and who acts next. */
 function advanceBidding(state: GameState, actor: Seat) {
   const b = state.bidding;
@@ -311,6 +342,7 @@ function resetRound(state: GameState, dealer: Seat, gathered: Card[], nextShuffl
   if (state.teams) for (const t of state.teams) t.roundScore = 0;
   state.bidding = { starter: firstBidderFor(state), history: [], highestBid: null, highestBidder: null, passed: [] };
   state.trump = emptyTrump();
+  state.bonus = null;
   state.currentTrick = null;
   state.pendingLeader = null;
   state.completedTricks = [];
@@ -480,12 +512,13 @@ export function applyAction(input: GameState, action: Action, rng: Rng = Math.ra
       const p = state.players[action.seat];
       if (p.reserved) return fail('A trump card has already been reserved');
       const idx = p.hand.findIndex((c) => c.id === action.cardId);
-      if (idx < 0) return fail('The reserved card must come from your initial five cards');
+      if (idx < 0) return fail('The reserved card must come from your hand');
       const [card] = p.hand.splice(idx, 1);
       p.reserved = card;
       state.trump.suit = card.suit;
       state.trump.cardId = card.id;
-      state.phase = 'SECOND_DEAL';
+      // After a Bonus take-over the second deal has already happened.
+      state.phase = state.deck.length > 16 ? 'SECOND_DEAL' : 'THIRD_DEAL';
       state.currentPlayer = null;
       log(state, '{p} reserved a hidden trump card.', { p: action.seat });
       return { ok: true, state };
@@ -494,8 +527,48 @@ export function applyAction(input: GameState, action: Action, rng: Rng = Math.ra
     case 'DEAL_SECOND': {
       if ((err = requirePhase(state, 'SECOND_DEAL'))) return fail(err);
       dealRound(state, 4);
-      state.phase = 'THIRD_DEAL';
       log(state, 'Second deal: four more cards each.');
+      if (state.bonus === undefined) state.bonus = null;
+      if (state.config.bonusRound === 'afterSecondDeal' && state.config.bonusBid != null && !state.bonus) {
+        const start = firstBidderFor(state);
+        const minNext = Math.max(state.config.bonusBid, (state.bidding.highestBid ?? 0) + 1);
+        if (minNext <= state.config.maxBonusBid) {
+          state.bonus = { starter: start, history: [], caller: null, amount: null, minNext };
+          state.phase = 'BONUS_CALL';
+          state.currentPlayer = start;
+          log(state, 'Bonus call: anyone may now call {n} or more.', { n: minNext });
+          return { ok: true, state };
+        }
+      }
+      state.phase = 'THIRD_DEAL';
+      return { ok: true, state };
+    }
+
+    case 'BONUS_CALL':
+    case 'BONUS_PASS': {
+      if ((err = requirePhase(state, 'BONUS_CALL'))) return fail(err);
+      const bo = state.bonus!;
+      if (action.seat !== state.currentPlayer) return fail('It is not your turn to call');
+      if (action.type === 'BONUS_CALL') {
+        if (!Number.isInteger(action.amount) || action.amount < bo.minNext || action.amount > state.config.maxBonusBid) {
+          return fail(`Calls must be from ${bo.minNext} to ${state.config.maxBonusBid}`);
+        }
+        bo.caller = action.seat;
+        bo.amount = action.amount;
+        bo.minNext = action.amount + 1;
+        bo.history.push({ seat: action.seat, action: 'call', amount: action.amount });
+        log(state, action.amount === state.config.bonusBid ? '{p} calls the Bonus ({n})!' : '{p} calls {n}!', { p: action.seat, n: action.amount });
+      } else {
+        bo.history.push({ seat: action.seat, action: 'pass' });
+        log(state, '{p} does not call.', { p: action.seat });
+      }
+      const spoken = bo.history.length;
+      if (spoken >= 4 || bo.minNext > state.config.maxBonusBid) {
+        for (let s = nextSeat(action.seat), n = spoken; n < 4; s = nextSeat(s), n++) bo.history.push({ seat: s, action: 'auto-pass' });
+        finishBonus(state);
+      } else {
+        state.currentPlayer = nextSeat(action.seat);
+      }
       return { ok: true, state };
     }
 

@@ -255,3 +255,47 @@ export function MatchResult({ view, onNewGame, onMenu }: { view: PlayerView; onN
     </div>
   );
 }
+
+/** After the second deal: call the Bonus (10), or go higher than the last call. */
+export function BonusPanel({ view, dispatch }: { view: PlayerView; dispatch: Dispatch }) {
+  const i = useI18n();
+  const seatName = useSeatName(view.players);
+  const b = view.bonus;
+  if (!b) return null;
+  const myTurn = view.currentPlayer === view.seat;
+  const { bonusBid, bonusPoints, maxBonusBid } = view.config;
+  const amounts = Array.from({ length: Math.max(0, maxBonusBid - b.minNext + 1) }, (_, k) => b.minNext + k);
+  const points = (n: number) => (bonusPoints ?? 13) + (n - (bonusBid ?? 10));
+  const holder = b.caller ?? view.trump.bidder;
+  return (
+    <div className="panel bid-panel bonus-panel" aria-label={i.t('Bonus call')}>
+      <div className="bid-head">
+        <h3>🔥 {i.t('Bonus call')}</h3>
+        <span className="muted">{b.caller ? i.t('{p} called {n}', { p: seatName(b.caller), n: b.amount! }) : holder ? i.t('Contract now: {n} by {p}', { p: seatName(holder), n: view.bidding.highestBid ?? 0 }) : ''}</span>
+      </div>
+      <ol className="bid-history">
+        {b.history.map((h, k) => (
+          <li key={k}><b>{seatName(h.seat)}</b> {h.action === 'call' ? i.t('calls {n}', { n: h.amount! }) : h.action === 'auto-pass' ? i.t('cannot go higher') : i.t('no')}</li>
+        ))}
+        {b.history.length === 0 && <li className="muted">{i.t('{p} decides first.', { p: seatName(b.starter) })}</li>}
+      </ol>
+      {myTurn ? (
+        <>
+          <div className="bid-buttons">
+            {amounts.map((n) => (
+              <button key={n} className={`btn bid ${n === bonusBid ? 'bonus' : 'bonus high'}`} onClick={() => dispatch({ type: 'BONUS_CALL', seat: view.seat, amount: n })}>
+                {i.num(n)}<small>{n === bonusBid ? i.t('Bonus') : ''} +{i.num(points(n))}</small>
+              </button>
+            ))}
+            <button className="btn ghost pass" onClick={() => dispatch({ type: 'BONUS_PASS', seat: view.seat })}>{i.t('No')}</button>
+          </div>
+          <p className="prompt">{b.caller
+            ? i.t('Go higher to take the contract — make it and score the points shown, miss it and lose your call.')
+            : i.t('With nine cards in hand: call {n} for the Bonus? Make it and score {p}; miss it and lose {n}. The caller plays for it and picks the trump.', { n: b.minNext, p: points(b.minNext) })}</p>
+        </>
+      ) : (
+        <p className="prompt muted">{view.currentPlayer ? i.t('{p} is deciding…', { p: seatName(view.currentPlayer) }) : ''}</p>
+      )}
+    </div>
+  );
+}

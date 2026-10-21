@@ -13,6 +13,7 @@
 4. **Reshuffle call** — if the first hand (the player after the dealer) has no A, K, Q or J among their five cards, they may call for a reshuffle before bidding. The cards are gathered and shuffled, and that player becomes the dealer.
 5. **Bidding** — starting after the dealer, each player gets exactly one turn: bid a number higher than the current highest (7 = “Small”, 8, 9, or 10 = “Bonus”) or pass. Nobody bids twice. The highest bid wins. If nobody bids, the dealer must call 7.
    *Scoring the Bonus:* a 10 that is made scores **13**; a 10 that is missed scores **−10**.
+   **Bonus call** — after the second deal (nine cards each) every player, starting after the dealer, gets one turn to call the Bonus (10) or say no. After a 10 the next players may only call higher (11, 12, 13); a 13 ends it. The highest caller plays for that number; if they were not the bidder, the old bidder takes the hidden card back and the caller reserves a new trump card from their nine. Made: 13 + 1 per number above 10 (11 → 14, 12 → 15, 13 → 16; the extra points are an assumption, configurable). Missed: minus the number called.
 6. **Trump reservation** — the highest bidder picks one of their five cards and sets it aside face down. Its suit is trump. Only the bidder can see it.
 7. **Second deal** — four cards each. **Third deal** — four cards each. Everyone now holds 13 cards; the bidder holds 12 playable cards plus the reserved one.
 8. **Play** — 13 tricks. The player after the bidder leads trick 1; each trick's winner leads the next.
@@ -24,7 +25,7 @@
 
 ## Revealing the trump
 * **By the bidder** — only on their own turn when they cannot follow the led suit (for example trump was led and the reserved card is their only trump, or they want to trump). They must then play a trump-suit card (any one, not necessarily the reserved card) to that trick. The bidder can't reveal while leading.
-* **On request** — the current player (an opponent of the bidder) who cannot follow the led suit may ask to see it. Revealing doesn't win the trick; the requester must then play a trump-suit card if they hold one, otherwise any card.
+* **On request** — the current player (anyone but the bidder, partner included) who cannot follow the led suit may ask to see it. Revealing doesn't win the trick; the requester must then play a trump-suit card if they hold one, otherwise any card.
 * **Mandatory** — if the trump is still hidden after trick 12, it is revealed automatically before anyone plays to trick 13.
 * In every case the very same card goes back into the bidder's hand and can then be played like any other card. It is revealed once only.
 

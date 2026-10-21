@@ -29,7 +29,7 @@ export interface Client {
   send(msg: ServerMsg): void;
 }
 
-interface Member { name: string; sockets: Set<Client>; lastSeen: number; awaySince: number | null; voice?: boolean; muted?: boolean }
+interface Member { name: string; sockets: Set<Client>; lastSeen: number; awaySince: number | null; voice?: boolean; muted?: boolean; vs?: string }
 
 export interface Room {
   code: string;
@@ -76,7 +76,7 @@ export class RoomManager {
       case 'throw': return this.throwEmoji(c, m.to, m.e);
       case 'smack': return this.smack(c);
       case 'profile': return this.setProfile(c, m.handle, m.avatar, m.level);
-      case 'voice': return this.voice(c, !!m.on, !!m.muted);
+      case 'voice': return this.voice(c, !!m.on, !!m.muted, String(m.vs ?? '').slice(0, 16));
       case 'rtc': return this.rtc(c, String(m.to ?? ''), m.data);
       case 'lobby': return this.backToLobby(c);
       case 'close': return this.close(c);
@@ -230,7 +230,7 @@ export class RoomManager {
       mode: room.settings.mode,
       matchTarget: room.settings.matchTarget,
       rules: room.settings.rules,
-      teamNames: { X: 'Team X', Y: 'Team Y' },
+      teamNames: { X: room.settings.teamNames?.X || 'Team X', Y: room.settings.teamNames?.Y || 'Team Y' },
       rng: serverRng,
       players: Object.fromEntries(SEATS.map((s) => {
         const id = room.seats[s];
@@ -259,7 +259,7 @@ export class RoomManager {
     // The seat always comes from the connection, never from the message.
     const a = { ...action, seat } as Action;
     if (a.type === 'NEXT_ROUND') delete (a as { seat?: Seat }).seat;
-    const allowed = ['CUT', 'BID', 'PASS', 'CALL_RESHUFFLE', 'RESERVE', 'REVEAL_VOLUNTARY', 'REQUEST_REVEAL', 'PLAY_CARD', 'NEXT_ROUND'];
+    const allowed = ['CUT', 'BID', 'PASS', 'CALL_RESHUFFLE', 'RESERVE', 'BONUS_CALL', 'BONUS_PASS', 'REVEAL_VOLUNTARY', 'REQUEST_REVEAL', 'PLAY_CARD', 'NEXT_ROUND'];
     if (!allowed.includes(a.type)) return this.err(c, 'Unknown action');
     const m = room.members.get(c.id);
     if (m) m.awaySince = null;
@@ -390,20 +390,20 @@ export class RoomManager {
   private setProfile(c: Client, handle: string, avatar: string | null, level: number) {
     const error = this.profiles.set(c.id, handle, avatar, level);
     c.send({ t: 'profile', ok: !error, handle: String(handle ?? ''), ...(error ? { error } : {}) });
-    if (error) return;
     this.onDirty();
     const room = this.roomOf(c);
     if (room) this.broadcastRoom(room);
   }
 
   /** Join or leave the room's voice chat, or mute. */
-  private voice(c: Client, on: boolean, muted: boolean) {
+  private voice(c: Client, on: boolean, muted: boolean, vs: string) {
     const room = this.roomOf(c);
     const m = room?.members.get(c.id);
     if (!room || !m) return;
-    if (m.voice === on && m.muted === muted) return;
+    if (m.voice === on && m.muted === muted && (m.vs ?? '') === vs) return;
     m.voice = on;
     m.muted = on && muted;
+    m.vs = on ? vs : '';
     this.broadcastRoom(room);
   }
 
@@ -486,7 +486,7 @@ export class RoomManager {
       seats: { ...room.seats },
       members: [...room.members.entries()].map(([id, m]) => {
         const p = this.profiles.get(id);
-        return { id, name: m.name, online: m.sockets.size > 0, handle: p?.handle ?? null, pic: p?.pic ?? null, level: p?.level ?? 1, voice: !!m.voice, muted: !!m.muted };
+        return { id, name: m.name, online: m.sockets.size > 0, handle: p?.handle || null, pic: p?.pic ?? null, level: p?.level ?? 1, voice: !!m.voice, muted: !!m.muted, vs: m.vs ?? '' };
       }),
       chat: room.chat.slice(-CHAT_KEEP),
       autoplay,
@@ -565,6 +565,10 @@ export function sanitizeSettings(raw: Partial<RoomSettings> | undefined): RoomSe
     difficulty: r.difficulty === 'easy' || r.difficulty === 'hard' ? r.difficulty : 'normal',
     pace: r.pace === 'fast' ? 'fast' : 'normal',
     rules,
+    teamNames: {
+      X: cleanName(String(r.teamNames?.X ?? '')) || 'Team X',
+      Y: cleanName(String(r.teamNames?.Y ?? '')) || 'Team Y',
+    },
   };
 }
 

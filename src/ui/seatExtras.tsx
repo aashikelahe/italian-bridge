@@ -10,6 +10,8 @@ export interface SeatExtra {
   voice?: boolean;
   muted?: boolean;
   speaking?: boolean;
+  /** Your voice link to them (only while you are in the voice chat). */
+  link?: 'connecting' | 'connected' | 'trouble';
 }
 
 const Ctx = createContext<(seat: Seat) => SeatExtra | null>(() => null);

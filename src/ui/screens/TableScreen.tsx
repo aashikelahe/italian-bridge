@@ -14,7 +14,7 @@ import { SUIT_SYMBOL, isRed } from '../../engine/cards';
 import { Avatar, TrickArea, HumanHand } from '../components/Table';
 import { TrumpSeal } from '../components/TrumpSeal';
 import { ScorePanel } from '../components/ScorePanel';
-import { BidPanel, CutPanel, MatchResult, PhaseBanner, ReservePanel, RoundResult } from '../components/Panels';
+import { BidPanel, BonusPanel, CutPanel, MatchResult, PhaseBanner, ReservePanel, RoundResult } from '../components/Panels';
 import { ReactionLayer, SmackLayer, ThrowTray, type Reaction, type SmackEvent } from '../reactions';
 import { useI18n, useSeatName } from '../i18n';
 import { useTableSounds } from '../useTableSounds';
@@ -69,7 +69,7 @@ export interface TableScreenProps {
 function phaseLabel(i: ReturnType<typeof useI18n>, p: string): string {
   const m: Record<string, string> = {
     SHUFFLE: 'Shuffling', CUT: 'Cutting', INITIAL_DEAL: 'Dealing', BIDDING: 'Bidding', TRUMP_RESERVATION: 'Choosing trump',
-    SECOND_DEAL: 'Second deal', THIRD_DEAL: 'Third deal', ROUND_RESULT: 'Round over', MATCH_OVER: 'Match over',
+    SECOND_DEAL: 'Second deal', BONUS_CALL: 'Bonus call', THIRD_DEAL: 'Third deal', ROUND_RESULT: 'Round over', MATCH_OVER: 'Match over',
   };
   return m[p] ? i.t(m[p]) : p;
 }
@@ -162,6 +162,7 @@ export function TableScreen(props: TableScreenProps) {
   let modalKind = '';
   if (phase === 'CUT' && view.cutter === me) { modal = <CutPanel view={view} dispatch={dispatch} />; modalKind = 'full'; }
   else if (phase === 'BIDDING') { modal = <BidPanel view={view} dispatch={dispatch} />; modalKind = 'above-hand'; }
+  else if (phase === 'BONUS_CALL') { modal = <BonusPanel view={view} dispatch={dispatch} />; modalKind = 'above-hand'; }
   else if (phase === 'TRUMP_RESERVATION') { modal = <ReservePanel view={view} dispatch={dispatch} />; modalKind = view.trump.bidder === me ? 'full' : 'above-hand'; }
   else if (phase === 'ROUND_RESULT') { modal = <RoundResult view={view} dispatch={dispatch} canContinue={props.canContinue ?? true} />; modalKind = 'full'; }
   else if (phase === 'MATCH_OVER') { modal = <MatchResult view={view} onNewGame={props.onNewGame} onMenu={props.onExit} />; modalKind = 'full'; }

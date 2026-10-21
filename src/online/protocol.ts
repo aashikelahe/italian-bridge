@@ -15,6 +15,8 @@ export interface RoomSettings {
   difficulty: Difficulty;
   pace: Pace;
   rules: RuleConfig;
+  /** Team game: the two team names. */
+  teamNames?: { X: string; Y: string };
 }
 
 export interface MemberInfo {
@@ -27,6 +29,8 @@ export interface MemberInfo {
   /** In the voice chat, and whether their microphone is muted. */
   voice?: boolean;
   muted?: boolean;
+  /** Voice session id: changes each time they (re)join the voice chat. */
+  vs?: string;
 }
 export interface ChatMsg { id: number; from: string; name: string; text: string; at: number }
 
@@ -57,14 +61,14 @@ export type ClientMsg =
   | { t: 'throw'; to: Seat; e: string }
   | { t: 'smack' }
   | { t: 'profile'; handle: string; avatar: string | null; level: number }
-  | { t: 'voice'; on: boolean; muted: boolean }
+  | { t: 'voice'; on: boolean; muted: boolean; vs?: string }
   | { t: 'rtc'; to: string; data: unknown }
   | { t: 'lobby' }
   | { t: 'close' }
   | { t: 'ping' };
 
 export type ServerMsg =
-  | { t: 'welcome'; id: string }
+  | { t: 'welcome'; id: string; ice?: { urls: string | string[]; username?: string; credential?: string }[] }
   | { t: 'room'; room: RoomInfo }
   | { t: 'view'; view: PlayerView }
   | { t: 'throw'; from: Seat; to: Seat; e: string }
@@ -78,7 +82,7 @@ export type ServerMsg =
 /** Milliseconds between automatic steps, at normal pace. Clients use the same numbers for animation. */
 export const PACE_MS = {
   SHUFFLE: 1700, CUT: 1200, INITIAL_DEAL: 1100, BIDDING: 1500, TRUMP_RESERVATION: 1500,
-  SECOND_DEAL: 1700, THIRD_DEAL: 1700, PLAYING: 1150, MANDATORY_REVEAL: 2500,
+  SECOND_DEAL: 1700, BONUS_CALL: 1600, THIRD_DEAL: 1700, PLAYING: 1150, MANDATORY_REVEAL: 2500,
   TRICK_SHOW: 1500, TRICK_GATHER: 380, TRICK_SLIDE: 800,
 } as const;
 export const PACE_FACTOR: Record<Pace, number> = { normal: 1, fast: 0.55 };

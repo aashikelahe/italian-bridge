@@ -16,7 +16,7 @@ Every point the specification left open is a field in `RuleConfig` (`src/engine/
 | `allPass` | `forceDealerSeven` | `forceFirstBidderSeven`, `redeal` | Confirmed: if nobody bids, the dealer must call 7. |
 | `trumpEffect` | `afterReveal` | `always` | Confirmed by the owner's example: a trump-suit card played before the reveal has no power. |
 | `outbidPlayersScoreAs` | `pass` | `ownHighestBid` | Individual mode only: A bids 7, D later bids 9 — A scores as a passer (needs 5). In team mode this is settled by team scoring. |
-| `partnerMayRequestReveal` | `false` | `true` | Section 8B is headed "Opponent requests a reveal", so in team mode the bidder's partner can't ask. Individual mode: everyone except the bidder may. |
+| `partnerMayRequestReveal` | `true` | `false` | Confirmed by the game owner: anyone who cannot follow suit, the bidder's partner included, may ask to see the trump. |
 | `winCondition` | `reachOrExceed` | `exact` | Spec default; exact-target is offered as the "future" option. |
 | `tieRule` | `playOn` | `shared` | Spec asks for explicit tie handling. Several sides over the target: highest total wins. Tied highest: play another round. |
 | `cutter` | `beforeDealer` | `human` | Traditional; `human` lets you cut every round. |

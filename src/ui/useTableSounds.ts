@@ -23,10 +23,15 @@ export function useTableSounds(view: PlayerView) {
       if (last.action === 'bid' && last.amount === view.config.bonusBid) playBonus();
       else if (last.action === 'bid' || last.action === 'forced') playBid(); else playPass();
     }
+    // Bonus calls.
+    if (view.bonus && view.bonus.history.length > (p.bonus?.history.length ?? 0)) {
+      const last = view.bonus.history[view.bonus.history.length - 1];
+      if (last.action === 'call') playBonus(); else if (last.action === 'pass') playPass();
+    }
     // The trump is shown.
     if (view.trump.revealed && !p.trump.revealed) playReveal();
     // Your turn (bidding or playing).
-    const myTurnNow = view.currentPlayer === view.seat && (view.phase === 'BIDDING' || view.phase === 'PLAYING' || view.phase === 'TRUMP_RESERVATION');
+    const myTurnNow = view.currentPlayer === view.seat && (view.phase === 'BIDDING' || view.phase === 'BONUS_CALL' || view.phase === 'PLAYING' || view.phase === 'TRUMP_RESERVATION');
     const myTurnBefore = p.currentPlayer === p.seat && p.phase === view.phase;
     if (myTurnNow && !myTurnBefore) { setTimeout(playYourTurn, 250); buzz(40); }
     // A trick was won.

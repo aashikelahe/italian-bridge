@@ -5,7 +5,7 @@
  *   DATA_FILE  optional path of a JSON file to keep rooms across restarts
  */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { readFile, stat, writeFile, rename } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
@@ -87,6 +87,21 @@ setInterval(() => rooms.sweep(), 10 * 60_000).unref();
 const server = createServer((req, res) => { void serveStatic(req, res); });
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
+/**
+ * Relay (TURN) servers for voice chat, for networks where players can't connect directly.
+ * Uses time-limited credentials (the TURN REST scheme): TURN_URLS (comma separated) + TURN_SECRET,
+ * defaulting to the free Open Relay project.
+ */
+const TURN_URLS = (process.env.TURN_URLS ?? 'turn:staticauth.openrelay.metered.ca:80,turn:staticauth.openrelay.metered.ca:80?transport=tcp,turn:staticauth.openrelay.metered.ca:443,turns:staticauth.openrelay.metered.ca:443?transport=tcp')
+  .split(',').map((u) => u.trim()).filter(Boolean);
+const TURN_SECRET = process.env.TURN_SECRET ?? 'openrelayprojectsecret';
+function iceFor(id: string) {
+  if (!TURN_URLS.length || !TURN_SECRET) return [];
+  const username = `${Math.floor(Date.now() / 1000) + 12 * 3600}:${id}`;
+  const credential = createHmac('sha1', TURN_SECRET).update(username).digest('base64');
+  return [{ urls: TURN_URLS, username, credential }];
+}
+
 /** A player's public id is derived from their secret token, so it survives reconnects and restarts. */
 const idFor = (token: string) => createHash('sha256').update(`ib:${token}`).digest('base64url').slice(0, 16);
 
@@ -115,7 +130,7 @@ wss.on('connection', (ws: WebSocket) => {
       if (token.length < 16 || token.length > 64) { send({ t: 'error', msg: 'Bad sign-in token.' }); return; }
       if (client) rooms.disconnected(client);
       client = { id: idFor(token), name: cleanName(String(m.name ?? '')) || 'Player', room: null, send };
-      send({ t: 'welcome', id: client.id });
+      send({ t: 'welcome', id: client.id, ice: iceFor(client.id) });
       return;
     }
     if (!client) return;

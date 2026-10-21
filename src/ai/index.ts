@@ -54,6 +54,32 @@ function decideBid(view: PlayerView, difficulty: Difficulty, rng: Rng): Action {
   return { type: 'BID', seat: view.seat, amount };
 }
 
+/** Bonus call after the second deal: only with a really strong nine-card hand. */
+function decideBonus(view: PlayerView, difficulty: Difficulty, rng: Rng): Action {
+  const b = view.bonus!;
+  const pass: Action = { type: 'BONUS_PASS', seat: view.seat };
+  const hand = [...view.hand, ...(view.myReserved ? [view.myReserved] : [])];
+  // Sure-ish tricks: aces, protected kings, length in the best suit.
+  let est = 0;
+  for (const s of SUITS) {
+    const cards = hand.filter((c) => c.suit === s).sort((x, y) => y.strength - x.strength);
+    const has = (st: number) => cards.some((c) => c.strength === st);
+    if (has(14)) est += 1;
+    if (has(13) && (has(14) || cards.length >= 2)) est += 0.8;
+    if (has(12) && cards.length >= 3) est += 0.4;
+    est += Math.max(0, cards.length - 3) * 0.75;
+  }
+  est = est * (13 / 9) + 1 + (rng() * 2 - 1) * NOISE[difficulty];
+  // Team contract: the partner's tricks count too.
+  if (view.mode === 'team' && view.config.teamScoring === 'teamContract') est += 3;
+  // Don't take the contract from your own partner, and keep it if you already hold it unless very strong.
+  const holder = b.caller ?? view.trump.bidder;
+  if (view.mode === 'team' && holder && holder === partnerOf(view.seat)) return pass;
+  const need = b.minNext + (holder === view.seat ? 0.9 : 1.4);
+  if (est < need) return pass;
+  return { type: 'BONUS_CALL', seat: view.seat, amount: b.minNext };
+}
+
 // ---------------------------------------------------------------- trump reservation
 
 export function chooseTrumpCard(hand: Card[]): Card {
@@ -221,6 +247,8 @@ export function decideAIAction(view: PlayerView, difficulty: Difficulty, rng: Rn
       return { type: 'CUT', seat: view.seat, position: randInt(rng, 8, 44) };
     case 'BIDDING':
       return decideBid(view, difficulty, rng);
+    case 'BONUS_CALL':
+      return view.bonus ? decideBonus(view, difficulty, rng) : null;
     case 'TRUMP_RESERVATION':
       return { type: 'RESERVE', seat: view.seat, cardId: chooseTrumpCard(view.hand).id };
     case 'PLAYING':

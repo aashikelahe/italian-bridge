@@ -16,7 +16,7 @@ export function calculateRoundScore(
   switch (bidStatus.kind) {
     case 'bid':
       if (tricksWon < bidStatus.amount) return -bidStatus.amount;
-      return rules.bonusBid != null && bidStatus.amount === rules.bonusBid && rules.bonusPoints != null ? rules.bonusPoints : bidStatus.amount;
+      return rules.bonusBid != null && bidStatus.amount >= rules.bonusBid && rules.bonusPoints != null ? rules.bonusPoints + (bidStatus.amount - rules.bonusBid) : bidStatus.amount;
     case 'pass':
       return tricksWon >= rules.passTarget ? rules.passPoints : -rules.passPoints;
     default:
