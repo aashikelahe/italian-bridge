@@ -1,0 +1,12 @@
+{
+  "appId": "xyz.aashik.italianbridge",
+  "appName": "Italian Bridge",
+  "webDir": "dist-app",
+  "android": {
+    "backgroundColor": "#05100b",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}

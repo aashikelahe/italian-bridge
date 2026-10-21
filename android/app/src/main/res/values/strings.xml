@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Italian Bridge</string>
+    <string name="title_activity_main">Italian Bridge</string>
+    <string name="package_name">xyz.aashik.italianbridge</string>
+    <string name="custom_url_scheme">xyz.aashik.italianbridge</string>
+</resources>

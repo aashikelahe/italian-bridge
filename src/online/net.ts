@@ -212,7 +212,9 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
 }
 
 export function inviteLink(code: string): string {
-  const u = new URL(location.href);
+  // Inside the Android app the page address is local: share the website instead.
+  const isApp = location.hostname === 'localhost' && !!document.querySelector('meta[name="ib-app-version"]');
+  const u = new URL(isApp ? 'https://aashik.xyz/italian-bridge/' : location.href);
   u.search = '';
   u.hash = '';
   u.searchParams.set('room', code);

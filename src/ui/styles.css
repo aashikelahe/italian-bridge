@@ -1175,3 +1175,14 @@ body { background: var(--page); }
 @keyframes pulse-dim { to { opacity: 0.5; } }
 .av-top { top: 12px; }
 @media (orientation: portrait) { .tbl-hand .hand-hint { max-width: 32cqw; font-size: 0.72rem; } }
+
+/* Android app: update prompt */
+.update-veil { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: rgba(2,8,5,0.72); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.update-card { width: min(440px, 100%); max-height: 100%; overflow: auto; border-radius: 22px; padding: 20px 22px; text-align: center; display: flex; flex-direction: column; gap: 8px; align-items: center; animation: rise 0.25s ease-out both; }
+.update-icon { font-size: 40px; }
+.update-notes { background: rgba(0,0,0,0.25); border-radius: 12px; padding: 8px 12px; white-space: pre-line; text-align: left; width: 100%; margin: 0; }
+.update-actions { justify-content: center; }
+.update-card .small { font-size: 0.78rem; }
+.native-app .rotate-veil { display: none; }
+@media (max-height: 420px) { .update-card { padding: 12px 16px; gap: 4px; } .update-icon { font-size: 28px; } }
+.update-card .small { margin: 0; } @media (max-height: 420px) { .update-card .small { display: none; } }

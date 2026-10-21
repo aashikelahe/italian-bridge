@@ -498,4 +498,11 @@ export const BN: Record<string, string> = {
   '{p} now plays for {n}.': '{p} এখন {n}-এর জন্য খেলবে।',
   'Contract now: {n} by {p}': 'এখন চুক্তি: {p}-এর {n}',
   '{p} takes over with {n} and picks a new trump.': '{p} {n} ডেকে চুক্তি নিল, নতুন রং বাছবে।',
+  'Update available': 'আপডেট এসেছে',
+  'Update required': 'আপডেট করতে হবে',
+  'Version {v} is ready (you have {m}).': 'সংস্করণ {v} তৈরি (আপনার আছে {m})।',
+  'This version is needed to keep playing online with everyone.': 'সবার সাথে অনলাইনে খেলতে এই সংস্করণ লাগবে।',
+  'Update now': 'এখনই আপডেট',
+  'Later': 'পরে',
+  'The new version downloads, then tap it and choose Install. Your games, player card and settings are kept.': 'নতুন সংস্করণ ডাউনলোড হবে, তারপর সেটায় চাপ দিয়ে Install বাছুন। আপনার খেলা, প্লেয়ার কার্ড আর সেটিংস থেকে যাবে।',
 };

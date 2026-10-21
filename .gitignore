@@ -5,3 +5,4 @@ dist-single/
 dist-website/
 *.log
 rooms.json
+dist-app/

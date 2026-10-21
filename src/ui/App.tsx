@@ -5,6 +5,7 @@ import { secureRng } from '../engine/rng';
 import { storage, type Settings } from './storage';
 import { playClick, setHapticsEnabled, setSoundEnabled } from './sound';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { AppUpdate, isNativeApp } from './AppUpdate';
 import { GameScreen } from './screens/GameScreen';
 import { MainMenu, RulesScreen, SettingsScreen, SetupScreen, StatsScreen } from './screens/MenuScreens';
 import { OnlineScreen } from './screens/Online';
@@ -129,5 +130,5 @@ export function App() {
         />
       );
   }
-  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang} theme-${settings.theme} back-${settings.cardBack}`}>{body}</div></I18nProvider>;
+  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang} theme-${settings.theme} back-${settings.cardBack} ${isNativeApp() ? 'native-app' : ''}`}>{body}<AppUpdate /></div></I18nProvider>;
 }
