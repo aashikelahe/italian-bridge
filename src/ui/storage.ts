@@ -24,15 +24,30 @@ export interface Settings {
   /** Table look. */
   theme: TableTheme;
   cardBack: CardBackStyle;
+  /** Look of the card faces (some unlock at higher levels). */
+  cardFace: CardFaceStyle;
   /** Vibrate on your turn and on smacks (phones). */
   haptics: boolean;
   /** Version of the saved house rules, to switch old saves to newly confirmed defaults. */
   rulesRev?: number;
 }
 
-export type TableTheme = 'emerald' | 'royal' | 'crimson' | 'midnight';
+export type TableTheme = 'emerald' | 'royal' | 'crimson' | 'midnight' | 'sunset' | 'galaxy';
+export type CardFaceStyle = 'classic' | 'clean' | 'vintage' | 'neon' | 'royal' | 'alpona' | 'crystal' | 'obsidian';
+/** Card faces and table colours; `level` > 1 means it unlocks at that player level. */
+export const CARD_FACES: { id: CardFaceStyle; name: string; level: number }[] = [
+  { id: 'classic', name: 'Classic', level: 1 },
+  { id: 'clean', name: 'Clean', level: 1 },
+  { id: 'vintage', name: 'Vintage', level: 1 },
+  { id: 'neon', name: 'Neon', level: 3 },
+  { id: 'royal', name: 'Royal gold', level: 5 },
+  { id: 'alpona', name: 'Alpona', level: 8 },
+  { id: 'crystal', name: 'Crystal', level: 12 },
+  { id: 'obsidian', name: 'Obsidian', level: 16 },
+];
+export const THEME_LEVEL: Record<TableTheme, number> = { emerald: 1, royal: 1, crimson: 1, midnight: 1, sunset: 4, galaxy: 10 };
 export type CardBackStyle = 'ruby' | 'navy' | 'gold' | 'carbon';
-export const TABLE_THEMES: TableTheme[] = ['emerald', 'royal', 'crimson', 'midnight'];
+export const TABLE_THEMES: TableTheme[] = ['emerald', 'royal', 'crimson', 'midnight', 'sunset', 'galaxy'];
 export const CARD_BACKS: CardBackStyle[] = ['ruby', 'navy', 'gold', 'carbon'];
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -51,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rules: DEFAULT_RULES,
   theme: 'emerald',
   cardBack: 'ruby',
+  cardFace: 'classic',
   haptics: true,
 };
 

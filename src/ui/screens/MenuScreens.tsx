@@ -6,7 +6,7 @@ import { CardFace, CardBack } from '../components/Card';
 import { storage, EMPTY_STATS, type Settings } from '../storage';
 import { useI18n } from '../i18n';
 import { Face, colorFor, levelOf, picFromAvatar, useProfile } from '../profile';
-import { TABLE_THEMES, CARD_BACKS } from '../storage';
+import { StylePicker } from '../components/StylePicker';
 
 export function MainMenu({ hasSave, onNew, onResume, onGo, onOnline, onToggleLang, settings }: { hasSave: boolean; onNew: () => void; onResume: () => void; onGo: (s: 'rules' | 'settings' | 'stats' | 'profile') => void; onOnline: () => void; onToggleLang: () => void; settings: Settings }) {
   const i = useI18n();
@@ -15,28 +15,32 @@ export function MainMenu({ hasSave, onNew, onResume, onGo, onOnline, onToggleLan
   const name = settings.onlineNick || (settings.playerName !== 'You' ? settings.playerName : '') || i.t('Set up your player card');
   return (
     <div className="menu">
-      <button className="profile-chip glass" onClick={() => onGo('profile')}>
-        <Face pic={picFromAvatar(profile.avatar) ?? (settings.onlineNick || settings.playerName !== 'You' ? null : { emoji: '👤' })} name={name} color={colorFor(name)} />
-        <span className="pc-text"><b>{name}</b><small>{profile.handle ? `@${profile.handle}` : i.t('Create your player ID')} · {i.t('Level {n}', { n: lv.level })}</small></span>
-      </button>
-      <div className="menu-hero" aria-hidden>
-        <CardFace card={cardFromId('AS')} size="lg" className="h1" />
-        <CardBack size="lg" className="h2 sealed-hero" />
-        <CardFace card={cardFromId('KH')} size="lg" className="h3" />
-      </div>
-      <h1>{i.t('Italian Bridge')}</h1>
-      <p className="lede">{i.t('Bid, hide a trump, and take your tricks. Four players, one deck, thirteen tricks a round.')}</p>
-      <nav className="menu-actions">
-        {hasSave && <button className="btn brass big" onClick={onResume}>{i.t('Resume game')}</button>}
-        <button className={`btn big ${hasSave ? 'ghost' : 'brass'}`} onClick={onNew}>{i.t('Play against the computer')}</button>
-        <button className="btn big ghost" onClick={onOnline}>{i.t('Play online with friends')}</button>
-        <div className="menu-links">
-          <button className="btn ghost" onClick={() => onGo('rules')}>{i.t('Game rules')}</button>
-          <button className="btn ghost" onClick={() => onGo('settings')}>{i.t('Settings')}</button>
-          <button className="btn ghost" onClick={() => onGo('stats')}>{i.t('Statistics')}</button>
-          <button className="btn ghost" onClick={onToggleLang}>{i.lang === 'bn' ? 'English' : 'বাংলা'}</button>
+      <div className="menu-brand">
+        <div className="menu-hero" aria-hidden>
+          <CardFace card={cardFromId('AS')} size="lg" className="h1" />
+          <CardBack size="lg" className="h2 sealed-hero" />
+          <CardFace card={cardFromId('KH')} size="lg" className="h3" />
         </div>
-      </nav>
+        <h1>{i.t('Italian Bridge')}</h1>
+        <p className="lede">{i.t('Bid, hide a trump, and take your tricks. Four players, one deck, thirteen tricks a round.')}</p>
+      </div>
+      <div className="menu-side">
+        <button className="profile-chip glass" onClick={() => onGo('profile')}>
+          <Face pic={picFromAvatar(profile.avatar) ?? (settings.onlineNick || settings.playerName !== 'You' ? null : { emoji: '👤' })} name={name} color={colorFor(name)} />
+          <span className="pc-text"><b>{name}</b><small>{profile.handle ? `@${profile.handle}` : i.t('Create your player ID')} · {i.t('Level {n}', { n: lv.level })}</small></span>
+        </button>
+        <nav className="menu-actions">
+          {hasSave && <button className="btn brass big" onClick={onResume}>{i.t('Resume game')}</button>}
+          <button className={`btn big ${hasSave ? 'ghost' : 'brass'}`} onClick={onNew}>🃏 {i.t('Play against the computer')}</button>
+          <button className="btn big ghost" onClick={onOnline}>👥 {i.t('Play online with friends')}</button>
+          <div className="menu-links">
+            <button className="btn ghost" onClick={() => onGo('rules')}>📖 {i.t('Game rules')}</button>
+            <button className="btn ghost" onClick={() => onGo('settings')}>⚙️ {i.t('Settings')}</button>
+            <button className="btn ghost" onClick={() => onGo('stats')}>📊 {i.t('Statistics')}</button>
+            <button className="btn ghost" onClick={onToggleLang}>🌐 {i.lang === 'bn' ? 'English' : 'বাংলা'}</button>
+          </div>
+        </nav>
+      </div>
     </div>
   );
 }
@@ -132,10 +136,12 @@ export function SettingsScreen({ settings, onSave, onBack }: { settings: Setting
         <Segmented label="Animation" value={s.anim} onChange={(v) => update({ ...s, anim: v })} options={[{ value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }, { value: 'reduced', label: 'Reduced motion' }]} />
         <Segmented label="Sort my hand" value={s.sort} onChange={(v) => update({ ...s, sort: v })} options={[{ value: 'suitThenRank', label: 'By suit' }, { value: 'rankThenSuit', label: 'By rank' }]} />
         <Segmented label="Sound effects" value={s.sound ? 'on' : 'off'} onChange={(v) => update({ ...s, sound: v === 'on' })} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
-        <Segmented label="Table colour" value={s.theme} onChange={(v) => update({ ...s, theme: v })} options={TABLE_THEMES.map((t) => ({ value: t, label: t === 'emerald' ? 'Emerald' : t === 'royal' ? 'Royal blue' : t === 'crimson' ? 'Crimson' : 'Midnight' }))} />
-        <Segmented label="Card backs" value={s.cardBack} onChange={(v) => update({ ...s, cardBack: v })} options={CARD_BACKS.map((t) => ({ value: t, label: t === 'ruby' ? 'Ruby' : t === 'navy' ? 'Navy' : t === 'gold' ? 'Gold' : 'Carbon' }))} />
         <Segmented label="Vibration" value={s.haptics ? 'on' : 'off'} onChange={(v) => update({ ...s, haptics: v === 'on' })} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
         <Segmented label="Developer mode (shows every hand — for testing only)" value={s.devMode ? 'on' : 'off'} onChange={(v) => update({ ...s, devMode: v === 'on' })} options={[{ value: 'off', label: 'Off' }, { value: 'on', label: 'On' }]} />
+        <details className="advanced looks">
+          <summary>{i.t('Card style and table')}</summary>
+          <StylePicker settings={s} onChange={update} />
+        </details>
         <p className="muted">{i.t('Settings are saved on this device.')}</p>
       </div>
     </div>

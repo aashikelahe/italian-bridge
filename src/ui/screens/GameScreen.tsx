@@ -20,6 +20,7 @@ interface Props {
   onNewGame: () => void;
   onToggleLang: () => void;
   onToggleSound: () => void;
+  onChangeSettings: (s: Settings) => void;
 }
 
 function recordStats(s: GameState, prev: GameState) {
@@ -120,7 +121,7 @@ function useAISmacks(state: GameState, add: (s: Seat) => void) {
   }, [state, add]);
 }
 
-export function GameScreen({ initial, difficulty, friends, settings, onExit, onNewGame, onToggleLang, onToggleSound }: Props) {
+export function GameScreen({ initial, difficulty, friends, settings, onExit, onNewGame, onToggleLang, onToggleSound, onChangeSettings }: Props) {
   const onChange = useCallback((s: GameState, prev: GameState) => {
     recordStats(s, prev);
     storage.saveGame(s.phase === 'MATCH_OVER' ? null : { state: s, difficulty, friends, savedAt: Date.now() });
@@ -158,6 +159,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
         onThrow={(to, e) => { add({ from: HUMAN, to, e }); answer(HUMAN, to, e); }}
         onToggleLang={onToggleLang}
         onToggleSound={onToggleSound}
+        onChangeSettings={onChangeSettings}
         smacks={sm.smacks}
         onSmack={() => sm.add(HUMAN)}
       />

@@ -149,6 +149,7 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
     <div className="page online-home">
       <header className="page-head"><button className="btn ghost small" onClick={onBack}>{i.t('Back')}</button><h1>{i.t('Play online')}</h1></header>
       {banner && <p className="notice" role="status">{banner}</p>}
+      <div className="oh-grid"><div className="oh-left">
       <ProfileStrip name={cleanName(nick) || i.t('Your name')} onEdit={onProfile} />
       <label className="field">
         <span>{i.t('Your name at the table')}</span>
@@ -166,6 +167,7 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
         )}
       </section>
 
+      </div>
       <section className="online-card">
         <h2>{i.t('Create a room')}</h2>
         <div className="seg-opts">
@@ -199,9 +201,10 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
           <label className={pace === 'normal' ? 'on' : ''}><input type="radio" checked={pace === 'normal'} onChange={() => setPace('normal')} />{i.t('Relaxed pace')}</label>
           <label className={pace === 'fast' ? 'on' : ''}><input type="radio" checked={pace === 'fast'} onChange={() => setPace('fast')} />{i.t('Fast pace')}</label>
         </div>
-        <p className="muted">{i.t('Your house rules from New game are used. Empty seats are filled by computer players when the game starts.')}</p>
+        <p className="muted oh-note">{i.t('Your house rules from New game are used. Empty seats are filled by computer players when the game starts.')}</p>
         <button className="btn brass big" disabled={!connected} onClick={create}>{i.t('Create room')}</button>
       </section>
+      </div>
       {(err || error || leftMsg) && <p className="form-error" role="alert">{err ?? (error ? i.t(error) : leftMsg)}</p>}
     </div>
   );
@@ -252,7 +255,6 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
   const [confirmClose, setConfirmClose] = useState(false);
   const member = (id: string | null) => (id ? room.members.find((m) => m.id === id) : undefined);
-  const humans = SEATS.filter((s) => room.seats[s]);
   const playing = room.status !== 'lobby';
   const link = inviteLink(room.code);
 
@@ -261,24 +263,49 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
   };
   const seatLabel: Record<Seat, string> = { A: i.t('North'), B: i.t('East'), C: i.t('South'), D: i.t('West') };
 
-  return (
-    <div className="page lobby">
-      {banner && <p className="notice" role="status">{banner}</p>}
-      <header className="page-head">
-        <button className="btn ghost small" onClick={() => send({ t: 'leave' })}>{i.t('Leave room')}</button>
-        <h1>{i.t('Room')} <span className="room-code">{room.code}</span></h1>
-        <button className="btn small ghost" onClick={() => void copy('code')}>{copied === 'code' ? i.t('Copied') : i.t('Copy code')}</button>
-        <button className="btn small ghost" onClick={() => void copy('link')}>{copied === 'link' ? i.t('Copied') : i.t('Copy invite link')}</button>
-      </header>
-      <p className="muted">{i.t('Send your friends this link, or tell them the code {c}:', { c: room.code })} <span className="invite-link">{link}</span></p>
-      <p className="lobby-settings">
-        {room.settings.mode === 'team' ? `${teamName(room, 'X', i)} ${i.t('vs')} ${teamName(room, 'Y', i)}` : i.t('Individual')}
-        {room.settings.mode === 'team' && ` · ${room.settings.tableType === 'friends' ? i.t('Friends table') : i.t('Regular table')}`}
-        {` · ${i.t('{n} points', { n: room.settings.matchTarget })}`}
-      </p>
-      {playing && <p className="notice">{mySeat ? i.t('Loading the table…') : i.t('A game is being played in this room. You can chat; you can sit down when it ends.')}</p>}
+  const share = async () => {
+    try {
+      if (navigator.share) { await navigator.share({ title: 'Italian Bridge', text: i.t('Join my Italian Bridge room {c}', { c: room.code }), url: link }); return; }
+    } catch { /* cancelled */ }
+    void copy('link');
+  };
+  const settingsLine = [
+    room.settings.mode === 'team' ? `${teamName(room, 'X', i)} ${i.t('vs')} ${teamName(room, 'Y', i)}` : i.t('Individual'),
+    room.settings.mode === 'team' ? (room.settings.tableType === 'friends' ? i.t('Friends table') : i.t('Regular table')) : null,
+    i.t('{n} points', { n: room.settings.matchTarget }),
+  ].filter(Boolean).join(' · ');
 
-      <div className="lobby-grid">
+  return (
+    <div className="lobby2">
+      {banner && <p className="notice" role="status">{banner}</p>}
+      <header className="lobby-bar glass">
+        <button className="icon-btn" onClick={() => send({ t: 'leave' })} aria-label={i.t('Leave room')} title={i.t('Leave room')}>←</button>
+        <div className="lb-title">
+          <b>{i.t('Room')} <button className="room-code code-chip" onClick={() => void copy('code')} title={i.t('Copy code')}>{room.code}</button>{copied === 'code' && <small className="copied">{i.t('Copied')}</small>}</b>
+          <small>{settingsLine}</small>
+        </div>
+        <button className="icon-btn" onClick={() => void share()} aria-label={i.t('Copy invite link')} title={i.t('Copy invite link')}>{copied === 'link' ? '✓' : '🔗'}</button>
+        <div className="lb-members" aria-label={i.t('In the lobby')}>
+          {room.members.slice(0, 8).map((m) => (
+            <span key={m.id} className={`lb-member ${m.online ? '' : 'away'}`} title={`${m.id === me ? i.t('You') : m.name}${m.handle ? ` @${m.handle}` : ''}${m.id === room.hostId ? ` · ${i.t('host')}` : ''}`}>
+              <MemberFace m={m} small speaking={voice.speaking.has(m.id)} />
+              {m.voice && <i className="lb-mic">{m.muted ? '🔇' : '🎙'}</i>}
+            </span>
+          ))}
+        </div>
+        <div className="lb-actions">
+          {isHost && !playing && (confirmClose
+            ? <><button className="btn small ghost" onClick={() => setConfirmClose(false)}>{i.t('Keep it')}</button><button className="btn small" onClick={() => send({ t: 'close' })}>{i.t('Close room')}</button></>
+            : <button className="icon-btn" onClick={() => setConfirmClose(true)} aria-label={i.t('Close room')} title={i.t('Close room')}>✕</button>)}
+          {isHost && !playing && <button className="btn brass small start-btn" disabled={!mySeat} onClick={() => send({ t: 'start' })} title={mySeat ? '' : i.t('Take a seat before you start.')}>▶ {i.t('Start game')}</button>}
+          {!isHost && !playing && <small className="muted lb-wait">{i.t('Waiting for {p} to start the game.', { p: member(room.hostId)?.name || i.t('the host') })}</small>}
+        </div>
+      </header>
+      {confirmClose && <p className="notice">{i.t('Close this room for everyone?')}</p>}
+      {playing && <p className="notice">{mySeat ? i.t('Loading the table…') : i.t('A game is being played in this room. You can chat; you can sit down when it ends.')}</p>}
+      {isHost && !playing && !mySeat && <p className="lobby-hint">{i.t('Take a seat before you start.')}</p>}
+
+      <div className="lobby-body">
         <section className="seat-board" aria-label={i.t('Seats')}>
           {SEATS.map((s) => {
             const id = room.seats[s];
@@ -300,7 +327,7 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
                     </div>
                   </div>
                 ) : (
-                  <div className="slot-who empty"><span className="pface bot-face" aria-hidden>🤖</span><span className="muted">{i.t('Computer player if empty')}</span></div>
+                  <div className="slot-who empty"><span className="pface bot-face" aria-hidden>🤖</span><span className="muted">{i.t('Computer')}</span></div>
                 )}
                 {!id && !playing && <button className="btn small" onClick={() => send({ t: 'sit', seat: s })}>{i.t('Sit here')}</button>}
                 {mine && !playing && <button className="btn small ghost" onClick={() => send({ t: 'stand' })}>{i.t('Stand up')}</button>}
@@ -314,28 +341,7 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
           <Chat room={room} me={me} send={send} />
         </div>
       </div>
-
-      <section className="lobby-actions">
-        <h3>{i.t('In the lobby')}</h3>
-        <ul className="member-list">
-          {room.members.map((m) => (
-            <li key={m.id} className={voice.speaking.has(m.id) ? 'speaking' : ''}><MemberFace m={m} small speaking={voice.speaking.has(m.id)} /><span className={`dot ${m.online ? 'on' : ''}`} />{m.id === me ? i.t('You') : m.name}{m.handle && <small className="handle">@{m.handle}</small>}{m.voice && <span aria-label={i.t('In voice chat')}>{m.muted ? '🔇' : '🎙'}</span>}{m.id === room.hostId && <span className="tag">{i.t('host')}</span>}</li>
-          ))}
-        </ul>
-        {isHost && !playing && (
-          <div className="row">
-            <span className="muted">{mySeat ? i.t('{n} people seated. Empty seats become computer players.', { n: humans.length }) : i.t('Take a seat before you start.')}</span>
-            <div className="row-gap">
-              {confirmClose
-                ? <><span>{i.t('Close this room for everyone?')}</span><button className="btn small ghost" onClick={() => setConfirmClose(false)}>{i.t('Keep it')}</button><button className="btn small" onClick={() => send({ t: 'close' })}>{i.t('Close room')}</button></>
-                : <button className="btn ghost" onClick={() => setConfirmClose(true)}>{i.t('Close room')}</button>}
-              <button className="btn brass big" disabled={!mySeat} onClick={() => send({ t: 'start' })}>{i.t('Start game')}</button>
-            </div>
-          </div>
-        )}
-        {!isHost && !playing && <p className="muted">{i.t('Waiting for {p} to start the game.', { p: member(room.hostId)?.name || i.t('the host') })}</p>}
-        {error && <p className="form-error" role="alert">{i.t(error)}</p>}
-      </section>
+      {error && <p className="toast" role="alert">{i.t(error)}</p>}
     </div>
   );
 }
@@ -432,6 +438,7 @@ function TableWithNotices(props: Props & {
       smacks={props.smacks}
       onSmack={() => send({ t: 'smack' })}
       onToggleSound={props.onToggleSound}
+      onChangeSettings={props.saveSettings}
       exitLabel={i.t('Leave room')}
       voice={props.voice}
       notice={notice}

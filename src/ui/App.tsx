@@ -6,6 +6,12 @@ import { storage, type Settings } from './storage';
 import { playClick, setHapticsEnabled, setSoundEnabled } from './sound';
 import { ProfileScreen } from './screens/ProfileScreen';
 import { AppUpdate, isNativeApp } from './AppUpdate';
+import { myLevel } from './components/StylePicker';
+import { CARD_FACES, THEME_LEVEL } from './storage';
+
+/** A style above your level (e.g. after resetting statistics) falls back to the free one. */
+const faceOk = (s: Settings) => ((CARD_FACES.find((f) => f.id === s.cardFace)?.level ?? 99) <= myLevel() ? s.cardFace : 'classic');
+const themeOk = (s: Settings) => ((THEME_LEVEL[s.theme] ?? 99) <= myLevel() ? s.theme : 'emerald');
 import { GameScreen } from './screens/GameScreen';
 import { MainMenu, RulesScreen, SettingsScreen, SetupScreen, StatsScreen } from './screens/MenuScreens';
 import { OnlineScreen } from './screens/Online';
@@ -93,6 +99,7 @@ export function App() {
           onNewGame={() => setScreen('setup')}
           onToggleLang={toggleLang}
           onToggleSound={toggleSound}
+          onChangeSettings={saveSettings}
         />
       ) : null;
       break;
@@ -130,5 +137,5 @@ export function App() {
         />
       );
   }
-  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang} theme-${settings.theme} back-${settings.cardBack} ${isNativeApp() ? 'native-app' : ''}`}>{body}<AppUpdate /></div></I18nProvider>;
+  return <I18nProvider lang={settings.lang} friends={false}><div className={`app lang-${settings.lang} theme-${themeOk(settings)} back-${settings.cardBack} face-${faceOk(settings)} ${isNativeApp() ? 'native-app' : ''}`}>{body}<AppUpdate /></div></I18nProvider>;
 }

@@ -25,6 +25,7 @@ import { QUICK_PHRASES } from '../quickChat';
 import { cardFromId } from '../../engine/cards';
 import { CardFace } from '../components/Card';
 import { relPos } from '../layout';
+import { StylePicker } from '../components/StylePicker';
 
 export interface TableChat {
   messages: ChatMsg[];
@@ -64,6 +65,8 @@ export interface TableScreenProps {
   exitLabel?: string;
   /** Online rooms: the voice chat. */
   voice?: Voice;
+  /** Change settings from the table (card style). */
+  onChangeSettings?: (s: Settings) => void;
 }
 
 function phaseLabel(i: ReturnType<typeof useI18n>, p: string): string {
@@ -109,6 +112,7 @@ export function TableScreen(props: TableScreenProps) {
   const [menu, setMenu] = useState(false);
   const [scores, setScores] = useState(false);
   const [lastTrick, setLastTrick] = useState(false);
+  const [styles, setStyles] = useState(false);
   const [chatOpen, setChatOpen] = useState(() => lsGet('ib.chatOpen') !== '0');
   const [uprightOk, setUprightOk] = useState(() => lsGet('ib.upright') === '1');
   const portraitPhone = useIsPortraitPhone();
@@ -201,6 +205,12 @@ export function TableScreen(props: TableScreenProps) {
           {trumpChip}
         </div>
         <div className="tbl-top-right">
+          <button className="pill-btn" onClick={() => setScores(true)}>
+            <span>{i.t('Scores')}</span>
+            {view.teams
+              ? <b>{view.teams.map((x) => i.num(x.cumulativeScore)).join(' : ')}</b>
+              : <b>{i.num(view.players[me].cumulativeScore)}</b>}
+          </button>
           {view.completedTricks.length > 0 && (phase === 'PLAYING' || phase === 'MANDATORY_REVEAL') && (
             <button className="icon-btn" onClick={() => setLastTrick((v) => !v)} aria-pressed={lastTrick} aria-label={i.t('Last trick')} title={i.t('Last trick')}>↶</button>
           )}
@@ -213,12 +223,9 @@ export function TableScreen(props: TableScreenProps) {
               title={props.voice.joined ? (props.voice.muted ? i.t('Unmute') : i.t('Mute')) : i.t('Join voice')}
             >{props.voice.joined && props.voice.muted ? '🔇' : '🎙'}</button>
           )}
-          <button className="pill-btn" onClick={() => setScores(true)}>
-            <span>{i.t('Scores')}</span>
-            {view.teams
-              ? <b>{view.teams.map((x) => i.num(x.cumulativeScore)).join(' : ')}</b>
-              : <b>{i.num(view.players[me].cumulativeScore)}</b>}
-          </button>
+          {friends && onThrow && (
+            <button className="icon-btn emoji-btn-top" onClick={() => setTray((t) => !t)} aria-pressed={tray} aria-label={i.t('Throw an emoji')} title={i.t('Throw an emoji')}>😜</button>
+          )}
           {chat && (
             <button className="icon-btn chat-toggle" onClick={() => setChatOpen((o) => !o)} aria-pressed={chatOpen} aria-label={i.t('Chat')}>
               💬{unread > 0 && <span className="unread">{i.num(unread)}</span>}
@@ -233,6 +240,7 @@ export function TableScreen(props: TableScreenProps) {
             <button role="menuitem" onClick={props.onToggleLang}>{i.lang === 'bn' ? 'English' : 'বাংলা'}</button>
             {props.onToggleSound && <button role="menuitem" onClick={props.onToggleSound}>{settings.sound ? i.t('Sound off') : i.t('Sound on')}</button>}
             {props.voice?.joined && <button role="menuitem" onClick={props.voice.leave}>{i.t('Leave voice')}</button>}
+            {props.onChangeSettings && <button role="menuitem" onClick={() => setStyles(true)}>🎨 {i.t('Card style and table')}</button>}
           </div>
         )}
       </header>
@@ -277,9 +285,6 @@ export function TableScreen(props: TableScreenProps) {
           })()}
           <SmackLayer me={me} smacks={props.smacks} />
           {friends && <ReactionLayer me={me} reactions={reactions} />}
-          {friends && onThrow && !tray && (
-            <button className="throw-fab" onClick={() => setTray(true)} aria-label={i.t('Throw an emoji')} title={i.t('Throw an emoji')}>😜</button>
-          )}
           {friends && onThrow && tray && (
             <ThrowTray view={view} target={target} setTarget={setTarget} onClose={() => setTray(false)} onThrow={(to, e) => onThrow(to, e)} />
           )}
@@ -306,6 +311,18 @@ export function TableScreen(props: TableScreenProps) {
               <ol>{[...view.log].reverse().slice(0, 60).map((l, k) => <li key={k}>{i.logLine(l, seatName)}</li>)}</ol>
             </details>
             {props.devHands && <p className="dev-note">{i.t('Developer mode is on: opponents’ hands are visible.')}</p>}
+          </div>
+        </div>
+      )}
+
+      {styles && props.onChangeSettings && (
+        <div className="tbl-sheet" role="dialog" aria-label={i.t('Card style and table')} onClick={(e) => { if (e.target === e.currentTarget) setStyles(false); }}>
+          <div className="sheet-body">
+            <header className="sheet-head">
+              <h2>{i.t('Card style and table')}</h2>
+              <button className="icon-btn" onClick={() => setStyles(false)} aria-label={i.t('Close')}>✕</button>
+            </header>
+            <StylePicker settings={settings} onChange={props.onChangeSettings} />
           </div>
         </div>
       )}

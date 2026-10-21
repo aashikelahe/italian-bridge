@@ -3,7 +3,7 @@ import type { Action, Card, GameState, Seat } from '../../engine/types';
 import type { PlayerView } from '../../engine/view';
 import { sortHand, SUIT_SYMBOL, type SortPref } from '../../engine/cards';
 import { currentWinningPlay } from '../../engine/rules';
-import { teamOf } from '../../engine/seating';
+import { partnerOf, teamOf } from '../../engine/seating';
 import { CardBack, CardFace } from './Card';
 import type { Sweep } from '../useGameDriver';
 import { callOf, teamContractMode } from './ScorePanel';
@@ -43,7 +43,7 @@ export function Avatar({ view, seat, devHand, won, hit, bubble, onPick }: {
   const Tag = onPick && seat !== view.seat ? 'button' : 'div';
   const fan = Math.min(p.handCount, 13);
   return (
-    <div className={`av av-${pos} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${extra?.speaking ? 'speaking' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
+    <div className={`av av-${pos} ${seat === view.seat ? 'me' : view.mode === 'team' && seat === partnerOf(view.seat) ? 'ally' : 'foe'} ${isTurn ? 'turn' : ''} ${won ? 'won' : ''} ${hit ? 'hit' : ''} ${extra?.speaking ? 'speaking' : ''} ${p.team ? `team-${p.team}` : ''}`} data-seat={seat}>
       <Tag className="av-plate" {...(Tag === 'button' ? { type: 'button', onClick: () => onPick!(seat), title: i.t('Throw something at {p}', { p: name }) } : {})}>
         <span className="av-ring" aria-hidden><Face pic={extra?.pic} name={name} color={colorFor(p.name, seat)} className="av-face" /></span>
         {extra?.voice && <span className={`av-mic ${extra.muted ? 'off' : ''} ${extra.link && extra.link !== 'connected' ? 'linking' : ''}`} title={extra.link && extra.link !== 'connected' ? i.t('connecting…') : extra.muted ? i.t('Microphone off') : i.t('In voice chat')} aria-hidden>{extra.link && extra.link !== 'connected' ? '⏳' : extra.muted ? '🔇' : '🎙'}</span>}
