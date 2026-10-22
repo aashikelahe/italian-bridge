@@ -2,7 +2,7 @@
  * Friends tables: emojis thrown at each other's faces. Purely cosmetic — never part of the
  * game state. Offline the computer players throw back; online they travel over the room.
  */
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useState, type CSSProperties } from 'react';
 import type { Seat } from '../engine/types';
 import type { PlayerView } from '../engine/view';
 import { SEATS } from '../engine/seating';
@@ -11,7 +11,7 @@ import { useI18n, useSeatName } from './i18n';
 import { buzz, playSmack, playSplat, playWhoosh } from './sound';
 import { partnerOf } from '../engine/seating';
 
-import { ADULT_EMOJIS, FUN_EMOJIS } from '../online/emojis';
+import { EMOJIS } from '../online/emojis';
 export { EMOJIS, KIND, MEAN, isEmoji } from '../online/emojis';
 
 export interface Reaction {
@@ -52,8 +52,6 @@ export function ThrowTray({ view, target, setTarget, onThrow, onClose }: {
   const seatName = useSeatName(view.players);
   const others = SEATS.filter((s) => s !== view.seat);
   const to = target ?? others[0];
-  const [tab, setTab] = useState<'fun' | 'adult'>(() => { try { return localStorage.getItem('ib.emojiTab') === 'adult' ? 'adult' : 'fun'; } catch { return 'fun'; } });
-  useEffect(() => { try { localStorage.setItem('ib.emojiTab', tab); } catch { /* ignore */ } }, [tab]);
   return (
     <div className="throw-tray" role="dialog" aria-label={i.t('Throw an emoji')}>
       <div className="throw-head">
@@ -65,12 +63,8 @@ export function ThrowTray({ view, target, setTarget, onThrow, onClose }: {
           <button key={s} className={`chip-btn ${to === s ? 'on' : ''}`} aria-pressed={to === s} onClick={() => setTarget(s)}>{seatName(s)}</button>
         ))}
       </div>
-      <div className="throw-tabs" role="tablist">
-        <button role="tab" aria-selected={tab === 'fun'} className={`chip-btn ${tab === 'fun' ? 'on' : ''}`} onClick={() => setTab('fun')}>😂 {i.t('Fun')}</button>
-        <button role="tab" aria-selected={tab === 'adult'} className={`chip-btn ${tab === 'adult' ? 'on' : ''}`} onClick={() => setTab('adult')}>🔞 18+</button>
-      </div>
       <div className="throw-grid">
-        {(tab === 'fun' ? FUN_EMOJIS : ADULT_EMOJIS).map((e) => (
+        {EMOJIS.map((e) => (
           <button key={e} className="emoji-btn" onClick={() => onThrow(to, e)} aria-label={e}>{e}</button>
         ))}
       </div>
