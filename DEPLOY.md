@@ -64,11 +64,11 @@ Render rebuilds and goes live again on its own in a few minutes.
 
 ## The copy on aashik.xyz
 
-The website has a copy of the game at `https://aashik.xyz/italian-bridge/` (linked from the Games page).
+The website has the download page at `https://aashik.xyz/italian-bridge/` and a copy of the game at `https://aashik.xyz/italian-bridge/play/`.
 It uses the game server at `https://italian-bridge-ln1u.onrender.com` (set in the page's
 `<meta name="ib-server">` tag), so online rooms work there too.
 To rebuild that copy after game changes: `IB_SERVER_URL=https://italian-bridge-ln1u.onrender.com npm run build:website`
-and copy `dist-website/index.html` to `italian-bridge/index.html` in the website repository.
+and copy `dist-website/index.html` to `italian-bridge/play/index.html` in the website repository.
 
 ## Optional: use your own domain
 
