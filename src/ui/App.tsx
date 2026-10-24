@@ -17,6 +17,8 @@ import { MainMenu, RulesScreen, SettingsScreen, SetupScreen, StatsScreen } from 
 import { OnlineScreen } from './screens/Online';
 import { I18nProvider } from './i18n';
 import { normalizeCode } from '../online/protocol';
+import { signedIn, syncAccount } from '../online/account';
+import { saveProfile } from './profile';
 
 type Screen = 'menu' | 'setup' | 'game' | 'rules' | 'settings' | 'stats' | 'online' | 'profile';
 
@@ -71,6 +73,15 @@ export function App() {
   }, []);
 
   const saveSettings = (s: Settings) => { setSettingsState(s); storage.saveSettings(s); };
+  // Signed in: bring this device up to date with the account (progress, name and picture from other devices).
+  useEffect(() => {
+    if (!signedIn()) return;
+    void syncAccount().then((a) => {
+      if (!a || typeof a === 'string') return;
+      saveProfile({ handle: a.login, avatar: a.avatar });
+      if (a.name) setSettingsState((cur) => { const n = { ...cur, onlineNick: a.name, playerName: a.name }; storage.saveSettings(n); return n; });
+    });
+  }, []);
   const toggleLang = () => saveSettings({ ...settings, lang: settings.lang === 'bn' ? 'en' : 'bn' });
   const toggleSound = () => saveSettings({ ...settings, sound: !settings.sound });
 

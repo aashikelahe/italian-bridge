@@ -6,11 +6,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Difficulty, GameMode, Seat } from '../../engine/types';
 import { SEATS, teamOf } from '../../engine/seating';
 import { MATCH_TARGETS } from '../../engine/config';
-import { cleanName, normalizeCode, PACE_FACTOR, PACE_MS, type Pace, type RoomInfo } from '../../online/protocol';
+import { cleanName, normalizeCode, PACE_FACTOR, PACE_MS, TURN_TIMERS, type Pace, type RoomInfo } from '../../online/protocol';
 import { inviteLink, memberPic, useServer, type ThrowEvent } from '../../online/net';
 import { useVoice, type Voice } from '../../online/voice';
 import { Face, botEmoji, colorFor, levelOf, useProfile, type PicInfo } from '../profile';
 import { SeatExtraProvider } from '../seatExtras';
+import { TurnClockProvider, type TurnClock } from '../turnClock';
 import { storage } from '../storage';
 import { QUICK_PHRASES } from '../quickChat';
 import { playJoin, playVoiceJoin } from '../sound';
@@ -49,10 +50,10 @@ export function OnlineScreen(props: Props) {
   const profile = useProfile();
   const level = useMemo(() => levelOf(storage.loadStats()).level, []);
   const profileMsg = useMemo(() => (profile.handle || profile.avatar ? { t: 'profile' as const, handle: profile.handle, avatar: profile.avatar, level } : null), [profile.handle, profile.avatar, level]);
-  const rtcRef = useRef<((from: string, data: unknown) => void) | null>(null);
-  const handlers = useMemo(() => ({ onThrow, onSmack: sm.add, onRtc: (f: string, d: unknown) => rtcRef.current?.(f, d) }), [onThrow, sm.add]);
+  const frameRef = useRef<((frame: Uint8Array) => void) | null>(null);
+  const handlers = useMemo(() => ({ onThrow, onSmack: sm.add, onVoice: (f: Uint8Array) => frameRef.current?.(f) }), [onThrow, sm.add]);
   const srv = useServer(name, handlers, profileMsg);
-  const voice = useVoice(srv.room, srv.me, srv.send, rtcRef, srv.ice ?? null);
+  const voice = useVoice(srv.room, srv.me, srv.send, srv.sendBinary, frameRef);
   useRoomSounds(srv.room, srv.me);
   const askedInvite = useRef(false);
 
@@ -88,7 +89,7 @@ export function OnlineScreen(props: Props) {
   if (room && me && room.status !== 'lobby' && mySeat && srv.view) {
     return (
       <OnlineTable {...props} room={room} me={me} view={srv.view} send={srv.send} error={srv.error} clearError={srv.clearError}
-        reactions={reactions} hits={hits} banner={banner} smacks={sm.smacks} voice={voice} />
+        reactions={reactions} hits={hits} banner={banner} smacks={sm.smacks} voice={voice} turn={srv.turn ?? null} />
     );
   }
   if (room && me) {
@@ -113,6 +114,7 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
   const [tableType, setTableType] = useState(settings.tableType);
   const [difficulty, setDifficulty] = useState<Difficulty>(settings.difficulty);
   const [pace, setPace] = useState<Pace>(settings.anim === 'fast' ? 'fast' : 'normal');
+  const [turnTimer, setTurnTimer] = useState<number>(settings.turnTimer ?? 0);
   const [teamX, setTeamX] = useState(lsTeam('X'));
   const [teamY, setTeamY] = useState(lsTeam('Y'));
   const [err, setErr] = useState<string | null>(null);
@@ -133,7 +135,8 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
     setErr(null); clearLeft(); remember();
     const tn = { X: cleanName(teamX) || 'Team X', Y: cleanName(teamY) || 'Team Y' };
     try { localStorage.setItem('ib.teamNames', JSON.stringify(tn)); } catch { /* ignore */ }
-    send({ t: 'create', settings: { mode, matchTarget: target, tableType: mode === 'team' ? tableType : 'regular', difficulty, pace, rules: settings.rules, teamNames: tn } });
+    if (turnTimer !== settings.turnTimer) saveSettings({ ...settings, onlineNick: cleanName(nick), turnTimer });
+    send({ t: 'create', settings: { mode, matchTarget: target, tableType: mode === 'team' ? tableType : 'regular', difficulty, pace, rules: settings.rules, teamNames: tn, turnTimer } });
   };
   const join = (raw: string) => {
     const code = normalizeCode(raw);
@@ -201,11 +204,28 @@ function OnlineHome({ settings, saveSettings, onBack, connected, banner, left, c
           <label className={pace === 'normal' ? 'on' : ''}><input type="radio" checked={pace === 'normal'} onChange={() => setPace('normal')} />{i.t('Relaxed pace')}</label>
           <label className={pace === 'fast' ? 'on' : ''}><input type="radio" checked={pace === 'fast'} onChange={() => setPace('fast')} />{i.t('Fast pace')}</label>
         </div>
+        <TimerPicker value={turnTimer} onChange={setTurnTimer} />
         <p className="muted oh-note">{i.t('Your house rules from New game are used. Empty seats are filled by computer players when the game starts.')}</p>
         <button className="btn brass big" disabled={!connected} onClick={create}>{i.t('Create room')}</button>
       </section>
       </div>
       {(err || error || leftMsg) && <p className="form-error" role="alert">{err ?? (error ? i.t(error) : leftMsg)}</p>}
+    </div>
+  );
+}
+
+/** Move timer: off, or 15 / 30 / 45 seconds a move. */
+export function TimerPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const i = useI18n();
+  return (
+    <div className="field timer-pick">
+      <span>⏱ {i.t('Move timer')}</span>
+      <div className="seg-opts">
+        {TURN_TIMERS.map((t) => (
+          <label key={t} className={value === t ? 'on' : ''}><input type="radio" name="turn-timer" checked={value === t} onChange={() => onChange(t)} />{t === 0 ? i.t('No timer') : i.t('{n} sec', { n: t })}</label>
+        ))}
+      </div>
+      <small className="muted">{i.t('If time runs out, the computer makes the move for that player.')}</small>
     </div>
   );
 }
@@ -273,6 +293,7 @@ function Lobby({ room, me, send, error, clearError, banner, voice }: Props & { r
     room.settings.mode === 'team' ? `${teamName(room, 'X', i)} ${i.t('vs')} ${teamName(room, 'Y', i)}` : i.t('Individual'),
     room.settings.mode === 'team' ? (room.settings.tableType === 'friends' ? i.t('Friends table') : i.t('Regular table')) : null,
     i.t('{n} points', { n: room.settings.matchTarget }),
+    room.settings.turnTimer ? `⏱ ${i.t('{n} sec', { n: room.settings.turnTimer })}` : null,
   ].filter(Boolean).join(' · ');
 
   return (
@@ -369,6 +390,7 @@ function useServerViewEffects(view: PlayerView, pace: Pace, anim: Settings['anim
 }
 
 function OnlineTable(props: Props & {
+  turn: TurnClock | null;
   room: RoomInfo; me: string; view: PlayerView; send: Send; error: string | null; clearError: () => void;
   reactions: ReturnType<typeof useReactions>['reactions']; hits: ReturnType<typeof useReactions>['hits']; banner: string | null;
   smacks: ReturnType<typeof useSmacks>['smacks']; voice: Voice;
@@ -395,7 +417,9 @@ function OnlineTable(props: Props & {
     <I18nProvider lang={settings.lang} friends={friends}>
       <SeatNameProvider resolve={resolve}>
         <SeatExtraProvider resolve={extra}>
-          <TableWithNotices {...props} friends={friends} sweeping={sweeping} away={away} send={send} />
+          <TurnClockProvider clock={props.turn}>
+            <TableWithNotices {...props} friends={friends} sweeping={sweeping} away={away} send={send} />
+          </TurnClockProvider>
         </SeatExtraProvider>
       </SeatNameProvider>
     </I18nProvider>

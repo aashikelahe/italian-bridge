@@ -228,6 +228,56 @@ describe('game server rooms', () => {
     expect(host.lastRoom()!.members.find((m) => m.id === 'guest')?.voice).toBe(false);
   });
 
+  it('voice: audio frames go to every other voice member (not the sender, not muted, not other rooms)', () => {
+    const { rm, host, guest, code } = setup();
+    const third = fake('third'); const fourth = fake('fourth');
+    rm.handle(third, { t: 'join', code }); rm.handle(fourth, { t: 'join', code });
+    const got: Record<string, Uint8Array[]> = { host: [], guest: [], third: [], fourth: [] };
+    for (const c of [host, guest, third, fourth]) c.sendBinary = (d) => got[c.id].push(d);
+    for (const c of [host, guest, third, fourth]) rm.handle(c, { t: 'voice', on: true, muted: false });
+    const frame = new Uint8Array([1, 5, 0, 0, 0, 0, 9, 9, 9]);
+    rm.voiceData(guest, frame);
+    expect(got.guest.length).toBe(0);
+    for (const id of ['host', 'third', 'fourth']) {
+      const f = got[id][0];
+      expect(f[0]).toBe(2);
+      expect(new TextDecoder().decode(f.subarray(2, 2 + f[1]))).toBe('guest');
+      expect([...f.subarray(2 + f[1])]).toEqual([5, 0, 0, 0, 0, 9, 9, 9]);
+    }
+    // everyone hears everyone
+    rm.voiceData(host, frame); rm.voiceData(third, frame); rm.voiceData(fourth, frame);
+    expect(Object.values(got).map((x) => x.length)).toEqual([3, 3, 3, 3]);
+    // muted or not in voice: nothing is sent
+    rm.handle(fourth, { t: 'voice', on: true, muted: true });
+    rm.voiceData(fourth, frame);
+    rm.handle(third, { t: 'voice', on: false, muted: false });
+    rm.voiceData(host, frame);
+    expect(got.third.length).toBe(3);
+    expect(got.guest.length).toBe(4);
+  });
+
+  it('move timer: a player who does not move in time is moved for, and everyone is told the deadline', () => {
+    const rm = new RoomManager();
+    const host = fake('host', 'Ashik');
+    rm.handle(host, { t: 'create', settings: { ...SETTINGS, turnTimer: 15 } });
+    expect(host.lastRoom()!.settings.turnTimer).toBe(15);
+    rm.handle(host, { t: 'sit', seat: 'A' });
+    rm.handle(host, { t: 'start' });
+    const code = host.lastRoom()!.code;
+    // wait until it's the host's move
+    for (let i = 0; i < 200 && rm.rooms.get(code)!.game!.currentPlayer !== 'A'; i++) vi.advanceTimersByTime(500);
+    const g = rm.rooms.get(code)!.game!;
+    expect(g.currentPlayer).toBe('A');
+    const turn = [...host.inbox].reverse().find((m) => m.t === 'turn');
+    expect(turn).toMatchObject({ t: 'turn', seat: 'A' });
+    vi.advanceTimersByTime(10_000);
+    expect(rm.rooms.get(code)!.game).toBe(g); // still waiting
+    vi.advanceTimersByTime(8_000);
+    expect(rm.rooms.get(code)!.game).not.toBe(g); // moved for them
+    // timer off: waits as long as needed
+    expect(sanitizeSettings({ ...SETTINGS, turnTimer: 99 }).turnTimer).toBe(0);
+  });
+
   it('joining a missing room says so', () => {
     const rm = new RoomManager();
     const c = fake('x');

@@ -893,6 +893,9 @@ body { background: var(--page); }
 .profile-chip.wide { width: 100%; border-radius: 18px; }
 .profile-chip .pc-edit { margin-left: auto; color: var(--gold-2); font-weight: 600; font-size: 0.9rem; }
 .menu .profile-chip { margin-bottom: 0.5rem; }
+/* Big screens: keep the floating cards and the player card centred under the title. */
+.menu-brand, .menu-side { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.menu-hero { margin-inline: auto; }
 
 /* ---------- faces (photo / emoji / initials) ---------- */
 .pface {
@@ -1409,3 +1412,48 @@ body { background: var(--page); }
 .sp-item.back-gold .card.back { background: repeating-linear-gradient(45deg, transparent 0 5px, rgba(80,50,0,0.25) 5px 6px), repeating-linear-gradient(-45deg, transparent 0 5px, rgba(80,50,0,0.25) 5px 6px), linear-gradient(160deg, #f6d77a, #b98a28); border-color: var(--ivory); }
 .sp-item.back-carbon .card.back { background: repeating-linear-gradient(45deg, #1b1d22 0 3px, #24272e 3px 6px); border-color: #c0c4cc; }
 .tbl .throw-tray { background: linear-gradient(160deg, rgba(14,40,26,0.95), rgba(6,20,12,0.95)); }
+
+/* ---------- v3.3: move timer ---------- */
+.turn-clock { position: absolute; inset: -6px; pointer-events: none; z-index: 3; }
+.turn-clock svg { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+.turn-clock circle { fill: none; stroke-width: 7; }
+.turn-clock .tc-bg { stroke: rgba(0,0,0,0.35); }
+.turn-clock .tc-fg { stroke: #3ee08f; stroke-linecap: round; transition: stroke-dashoffset 0.2s linear, stroke 0.3s; filter: drop-shadow(0 0 4px rgba(62,224,143,0.8)); }
+.turn-clock.low .tc-fg { stroke: #ff5a5a; filter: drop-shadow(0 0 5px rgba(255,90,90,0.9)); }
+.turn-clock b { position: absolute; right: -10px; top: -10px; min-width: 24px; height: 24px; padding: 0 5px; border-radius: 999px; display: grid; place-items: center; font: 800 13px/1 var(--font-ui, inherit); color: #10261a; background: #3ee08f; box-shadow: 0 3px 8px rgba(0,0,0,0.45); }
+.turn-clock.low b { background: #ff5a5a; color: #fff; animation: tc-pulse 0.5s ease-in-out infinite alternate; }
+@keyframes tc-pulse { to { transform: scale(1.18); } }
+
+/* The "wins the trick" note sits in the middle of the trick, above the cards (never under a player's name). */
+.tbl .trick-win, .trick-win {
+  top: 50%; bottom: auto; left: 50%; transform: translate(-50%, -50%); z-index: 30;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.55), 0 0 0 2px rgba(255,255,255,0.35);
+  font-size: 0.92rem; padding: 4px 14px; pointer-events: none;
+  animation: tw-pop calc(260ms * var(--t, 1)) ease-out both;
+}
+@keyframes tw-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.7); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+/* ---------- XP and level up ---------- */
+.xp-toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 54px); transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: 10px; padding: 6px 16px 6px 8px; border-radius: 999px; background: rgba(10,18,14,0.88); border: 1px solid rgba(242,199,92,0.5); box-shadow: 0 10px 28px rgba(0,0,0,0.5); color: #f3efe0; font-size: 0.85rem; pointer-events: none; animation: xp-in 0.35s ease-out both, xp-out 0.4s ease-in 2.8s both; }
+.xp-toast b { background: linear-gradient(180deg, #ffe9a8, #f2c75c); color: #2a1c04; border-radius: 999px; padding: 3px 10px; font-weight: 800; }
+@keyframes xp-in { from { opacity: 0; transform: translate(-50%, -12px) scale(0.9); } }
+@keyframes xp-out { to { opacity: 0; transform: translate(-50%, -8px); } }
+.levelup-veil { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); padding: 16px; animation: fade-in 0.25s ease-out both; }
+.levelup { position: relative; width: min(360px, 100%); text-align: center; padding: 26px 20px 18px; border-radius: 24px; display: flex; flex-direction: column; gap: 8px; align-items: center; border: 1px solid rgba(242,199,92,0.55); box-shadow: 0 0 60px rgba(242,199,92,0.3), 0 30px 60px rgba(0,0,0,0.6); animation: lu-pop 0.45s cubic-bezier(.2,1.4,.4,1) both; }
+.levelup small { text-transform: uppercase; letter-spacing: 0.16em; color: var(--gold-2, #f2c75c); font-weight: 800; }
+.lu-level { font-size: 2.2rem; line-height: 1; background: linear-gradient(180deg, #fff 20%, #ffe9a8 55%, #c9962c); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lu-burst { font-size: 3rem; margin-top: -54px; filter: drop-shadow(0 0 18px rgba(242,199,92,0.9)); animation: spin-slow 6s linear infinite; }
+.lu-unlocks p { margin: 4px 0; color: var(--muted); }
+.lu-unlocks ul { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; font-weight: 700; }
+.row-gap.center { justify-content: center; margin-top: 8px; }
+@keyframes lu-pop { from { opacity: 0; transform: scale(0.6); } }
+@keyframes spin-slow { to { transform: rotate(360deg); } }
+@keyframes fade-in { from { opacity: 0; } }
+.pc-next { display: block; margin-top: 4px; color: var(--gold-2, #f2c75c); font-weight: 600; }
+.xp-how summary { cursor: pointer; font-weight: 700; }
+.xp-how ul { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 4px; }
+.xp-how li b { display: inline-block; min-width: 46px; color: #ffe9a8; }
+.acct-form { display: flex; flex-direction: column; gap: 10px; }
+.acct-who { margin: 0; }
+.account-card h2 { margin: 0; }
+.timer-pick .seg-opts { margin-top: 4px; }

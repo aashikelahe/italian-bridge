@@ -1,4 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TurnClockProvider, type TurnClock } from '../turnClock';
+import { TIMED_PHASES } from '../../online/protocol';
+import { getPlayerView } from '../../engine/view';
+import { decideAIAction } from '../../ai';
 import { botEmoji, levelOf, picFromAvatar, useProfile } from '../profile';
 import { SeatExtraProvider } from '../seatExtras';
 import type { Difficulty, GameState, Seat } from '../../engine/types';
@@ -21,27 +25,6 @@ interface Props {
   onToggleLang: () => void;
   onToggleSound: () => void;
   onChangeSettings: (s: Settings) => void;
-}
-
-function recordStats(s: GameState, prev: GameState) {
-  if (prev.phase === s.phase) return;
-  const st = storage.loadStats();
-  if (s.phase === 'ROUND_RESULT') {
-    const me = s.players[HUMAN];
-    st.roundsPlayed++;
-    const tc = s.teams && s.config.teamScoring === 'teamContract';
-    const mine = tc ? s.teams!.find((t) => t.id === teamOf(HUMAN))!.roundScore : me.roundScore;
-    const bidding = tc ? teamOf(s.trump.bidder!) === teamOf(HUMAN) : me.bid.kind === 'bid';
-    if (bidding) { st.contractsBid++; if (mine > 0) st.contractsMade++; }
-    else { st.passesTotal++; if (mine > 0) st.passesMade++; }
-  } else if (s.phase === 'MATCH_OVER') {
-    st.matchesPlayed++;
-    const w = s.matchWinner!;
-    if ((w.kind === 'team' && teamOf(HUMAN) === w.id) || (w.kind === 'player' && w.seat === HUMAN)) st.matchesWon++;
-    const mine = s.teams ? s.teams.find((t) => t.id === teamOf(HUMAN))!.cumulativeScore : s.players[HUMAN].cumulativeScore;
-    st.bestTotal = st.bestTotal == null ? mine : Math.max(st.bestTotal, mine);
-  } else return;
-  storage.saveStats(st);
 }
 
 const pickOne = <T,>(xs: readonly T[]) => xs[Math.floor(Math.random() * xs.length)];
@@ -121,9 +104,26 @@ function useAISmacks(state: GameState, add: (s: Seat) => void) {
   }, [state, add]);
 }
 
+/** The move timer against the computer: when your time runs out, the computer moves for you. */
+function useOfflineTurnTimer(state: GameState, secs: number, paused: boolean, dispatch: (a: import('../../engine/types').Action) => string | null, difficulty: Difficulty): TurnClock | null {
+  const [clock, setClock] = useState<TurnClock | null>(null);
+  useEffect(() => {
+    const myMove = secs > 0 && !paused && state.currentPlayer === HUMAN && (TIMED_PHASES as readonly string[]).includes(state.phase)
+      && !(state.phase === 'PLAYING' && state.currentTrick?.plays.length === 4);
+    if (!myMove) { setClock(null); return; }
+    const total = secs * 1000;
+    setClock({ seat: HUMAN, endsAt: Date.now() + total, total });
+    const t = window.setTimeout(() => {
+      const a = decideAIAction(getPlayerView(state, HUMAN), difficulty, Math.random);
+      if (a) dispatch(a);
+    }, total + 200);
+    return () => window.clearTimeout(t);
+  }, [state, secs, paused, dispatch, difficulty]);
+  return clock;
+}
+
 export function GameScreen({ initial, difficulty, friends, settings, onExit, onNewGame, onToggleLang, onToggleSound, onChangeSettings }: Props) {
-  const onChange = useCallback((s: GameState, prev: GameState) => {
-    recordStats(s, prev);
+  const onChange = useCallback((s: GameState) => {
     storage.saveGame(s.phase === 'MATCH_OVER' ? null : { state: s, difficulty, friends, savedAt: Date.now() });
   }, [difficulty, friends]);
   const d = useGameDriver(initial, difficulty, settings.anim, onChange);
@@ -132,6 +132,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
   const answer = useAIThrows(d.state, friends, isAI, add);
   const sm = useSmacks();
   useAISmacks(d.state, sm.add);
+  const clock = useOfflineTurnTimer(d.state, settings.turnTimer ?? 0, d.paused, d.dispatch, difficulty);
 
   const profile = useProfile();
   const level = useMemo(() => levelOf(storage.loadStats()).level, []);
@@ -141,6 +142,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
   return (
     <I18nProvider lang={settings.lang} friends={friends}>
       <SeatExtraProvider resolve={extra}>
+      <TurnClockProvider clock={clock}>
       <TableScreen
         view={d.view}
         dispatch={d.dispatch}
@@ -163,6 +165,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
         smacks={sm.smacks}
         onSmack={() => sm.add(HUMAN)}
       />
+      </TurnClockProvider>
       </SeatExtraProvider>
     </I18nProvider>
   );

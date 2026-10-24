@@ -1,9 +1,9 @@
 {
-  "versionCode": 3,
-  "versionName": "1.0.2",
-  "minVersionCode": 1,
+  "versionCode": 4,
+  "versionName": "1.0.3",
+  "minVersionCode": 4,
   "notes": {
-    "en": "• The 18+ emoji tab is removed\n• Includes everything from 1.0.1: one-screen menus and lobby, new player plates, card styles",
-    "bn": "• ১৮+ ইমোজি সরিয়ে দেওয়া হয়েছে\n• ১.০.১-এর সবকিছু আছে: এক স্ক্রিনে মেনু ও লবি, নতুন প্লেয়ার প্লেট, তাসের সাজ"
+    "en": "• New voice chat: all four players hear each other on any network\n• Move timer: choose No timer, 15, 30 or 45 seconds\n• XP and levels: win rounds and matches to unlock card styles and tables\n• Accounts: sign in with your player ID on any device\n• “Wins the trick” note no longer hides under a name",
+    "bn": "• নতুন ভয়েস চ্যাট: যেকোনো নেটওয়ার্কে চারজনই সবার কথা শুনবে\n• চালের টাইমার: টাইমার নেই, ১৫, ৩০ বা ৪৫ সেকেন্ড\n• XP ও লেভেল: রাউন্ড ও ম্যাচ জিতে নতুন কার্ড ও টেবিল খুলুন\n• অ্যাকাউন্ট: যেকোনো ডিভাইসে প্লেয়ার আইডি দিয়ে সাইন ইন\n• “ট্রিক জিতেছে” লেখা আর নামের নিচে লুকায় না"
   }
 }

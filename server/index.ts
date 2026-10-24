@@ -119,7 +119,18 @@ wss.on('connection', (ws: WebSocket) => {
     try { ws.ping(); } catch { /* closing */ }
   }, 25_000);
 
-  ws.on('message', (data) => {
+  let voiceTokens = 40;
+  const voiceRefill = setInterval(() => { voiceTokens = Math.min(40, voiceTokens + 25); }, 1000);
+  const sendBinary = (buf: Uint8Array) => { if (ws.readyState === ws.OPEN && ws.bufferedAmount < 256 * 1024) ws.send(buf, { binary: true }); };
+
+  ws.on('message', (data, isBinary) => {
+    if (isBinary) {
+      // Voice audio: up to ~25 small frames a second per player.
+      if (!client || --voiceTokens < 0) return;
+      const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+      try { rooms.voiceData(client, new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength)); } catch { /* ignore */ }
+      return;
+    }
     let m: ClientMsg;
     try { m = JSON.parse(String(data)); } catch { return; }
     if (!m || typeof m !== 'object' || typeof m.t !== 'string') return;
@@ -129,7 +140,7 @@ wss.on('connection', (ws: WebSocket) => {
       const token = String(m.token ?? '');
       if (token.length < 16 || token.length > 64) { send({ t: 'error', msg: 'Bad sign-in token.' }); return; }
       if (client) rooms.disconnected(client);
-      client = { id: idFor(token), name: cleanName(String(m.name ?? '')) || 'Player', room: null, send };
+      client = { id: idFor(token), name: cleanName(String(m.name ?? '')) || 'Player', room: null, send, sendBinary };
       send({ t: 'welcome', id: client.id, ice: iceFor(client.id) });
       return;
     }
@@ -141,6 +152,7 @@ wss.on('connection', (ws: WebSocket) => {
   ws.on('close', () => {
     clearInterval(refill);
     clearInterval(beat);
+    clearInterval(voiceRefill);
     if (client) rooms.disconnected(client);
   });
 });

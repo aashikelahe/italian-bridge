@@ -17,7 +17,14 @@ export interface RoomSettings {
   rules: RuleConfig;
   /** Team game: the two team names. */
   teamNames?: { X: string; Y: string };
+  /** Seconds each player has for a move (0 = no limit). */
+  turnTimer?: number;
 }
+
+/** Choices for the move timer, in seconds (0 = off). */
+export const TURN_TIMERS = [0, 15, 30, 45] as const;
+/** Phases where a player's move is timed. */
+export const TIMED_PHASES = ['CUT', 'BIDDING', 'TRUMP_RESERVATION', 'BONUS_CALL', 'PLAYING'] as const;
 
 export interface MemberInfo {
   id: string; name: string; online: boolean;
@@ -76,6 +83,8 @@ export type ServerMsg =
   | { t: 'profile'; ok: boolean; handle: string; error?: string }
   | { t: 'rtc'; from: string; data: unknown }
   | { t: 'error'; msg: string }
+  /** The move timer: `seat` must move within `ms` milliseconds (seat null = no timer running). */
+  | { t: 'turn'; seat: Seat | null; ms: number; total: number }
   | { t: 'left'; reason: 'left' | 'closed' | 'missing' }
   | { t: 'pong' };
 

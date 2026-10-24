@@ -92,6 +92,7 @@ export function SetupScreen({ settings, onStart, onBack }: { settings: Settings;
         )}
         <Segmented label="Opponent skill" value={s.difficulty} onChange={(v) => set('difficulty', v)} options={[{ value: 'easy', label: 'Easy' }, { value: 'normal', label: 'Normal' }, { value: 'hard', label: 'Hard' }]} />
         <Segmented label="Play to" value={s.matchTarget} onChange={(v) => set('matchTarget', v)} options={MATCH_TARGETS.map((t) => ({ value: t, label: t === 30 ? '30 points' : '50 points' }))} />
+        <Segmented label="Move timer" value={s.turnTimer ?? 0} onChange={(v) => set('turnTimer', v)} options={[{ value: 0, label: 'No timer' }, { value: 15, label: '15 sec' }, { value: 30, label: '30 sec' }, { value: 45, label: '45 sec' }]} />
         <Segmented label="Animation" value={s.anim} onChange={(v) => set('anim', v)} options={[{ value: 'normal', label: 'Normal' }, { value: 'fast', label: 'Fast' }, { value: 'reduced', label: 'Reduced motion' }]} />
 
         <details className="advanced">

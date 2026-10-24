@@ -28,6 +28,8 @@ export interface Settings {
   cardFace: CardFaceStyle;
   /** Vibrate on your turn and on smacks (phones). */
   haptics: boolean;
+  /** Seconds each player has to move (0 = no timer). */
+  turnTimer: number;
   /** Version of the saved house rules, to switch old saves to newly confirmed defaults. */
   rulesRev?: number;
 }
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: Settings = {
   cardBack: 'ruby',
   cardFace: 'classic',
   haptics: true,
+  turnTimer: 0,
 };
 
 export interface Stats {
@@ -79,6 +82,9 @@ export interface Stats {
   passesMade: number;
   passesTotal: number;
   bestTotal: number | null;
+  /** Points earned (XP). Missing in saves from before points existed. */
+  xp?: number;
+  bonusesMade?: number;
 }
 
 export const EMPTY_STATS: Stats = {

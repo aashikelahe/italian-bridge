@@ -26,6 +26,8 @@ import { cardFromId } from '../../engine/cards';
 import { CardFace } from '../components/Card';
 import { relPos } from '../layout';
 import { StylePicker } from '../components/StylePicker';
+import { XpToasts } from '../components/XpToasts';
+import { useProgress } from '../progress';
 
 export interface TableChat {
   messages: ChatMsg[];
@@ -117,6 +119,7 @@ export function TableScreen(props: TableScreenProps) {
   const [uprightOk, setUprightOk] = useState(() => lsGet('ib.upright') === '1');
   const portraitPhone = useIsPortraitPhone();
   useTableSounds(view);
+  useProgress(view);
 
   useEffect(() => {
     if (!error) return;
@@ -314,6 +317,8 @@ export function TableScreen(props: TableScreenProps) {
           </div>
         </div>
       )}
+
+      <XpToasts onOpenStyles={props.onChangeSettings ? () => setStyles(true) : undefined} />
 
       {styles && props.onChangeSettings && (
         <div className="tbl-sheet" role="dialog" aria-label={i.t('Card style and table')} onClick={(e) => { if (e.target === e.currentTarget) setStyles(false); }}>

@@ -13,7 +13,7 @@ import { decideAIAction } from '../src/ai';
 import { resolveTrickWinner } from '../src/engine/rules';
 import { automaticAction } from '../src/ai/simulate';
 import {
-  AWAY_MS, PACE_FACTOR, PACE_MS, ROOM_CODE_ALPHABET, cleanName,
+  AWAY_MS, PACE_FACTOR, PACE_MS, ROOM_CODE_ALPHABET, TIMED_PHASES, TURN_TIMERS, cleanName,
   type ChatMsg, type ClientMsg, type RoomInfo, type RoomSettings, type ServerMsg,
 } from '../src/online/protocol';
 import { KIND, MEAN, isEmoji } from '../src/online/emojis';
@@ -27,6 +27,8 @@ export interface Client {
   name: string;
   room: string | null;
   send(msg: ServerMsg): void;
+  /** Binary frames (voice audio). Optional so test clients can leave it out. */
+  sendBinary?(data: Uint8Array): void;
 }
 
 interface Member { name: string; sockets: Set<Client>; lastSeen: number; awaySince: number | null; voice?: boolean; muted?: boolean; vs?: string }
@@ -48,6 +50,8 @@ export interface Room {
   /** Seats that already smacked in the current trick (key = trick index). */
   smacked: { trick: number; seats: Seat[] };
   lastBotSmackAt: number;
+  /** The running move timer (not saved). */
+  turn?: { game: GameState; seat: Seat; at: number; total: number } | null;
 }
 
 const MAX_ROOMS = 500;
@@ -135,6 +139,7 @@ export class RoomManager {
     room.lastActive = Date.now();
     this.broadcastRoom(room);
     this.sendView(room, c);
+    if (room.turn) c.send({ t: 'turn', seat: room.turn.seat, ms: Math.max(0, room.turn.at - Date.now()), total: room.turn.total });
     this.pump(room);
   }
 
@@ -318,7 +323,8 @@ export class RoomManager {
   pump(room: Room) {
     this.clearTimer(room);
     const s = room.game;
-    if (!s || room.status === 'lobby') return;
+    if (!s || room.status === 'lobby') { this.stopTurn(room); return; }
+    if (room.turn && room.turn.game !== s) this.stopTurn(room);
     const k = PACE_FACTOR[room.settings.pace];
     if (s.phase === 'PLAYING' && s.currentTrick?.plays.length === 4) {
       const ms = (PACE_MS.TRICK_SHOW + PACE_MS.TRICK_GATHER + PACE_MS.TRICK_SLIDE) * k + 120;
@@ -339,7 +345,9 @@ export class RoomManager {
     if (human) {
       const m = room.members.get(id!);
       const online = !!m && m.sockets.size > 0;
-      if (online) return; // wait for them
+      // With the move timer on, the timer decides (online or not); otherwise wait for them.
+      if (room.settings.turnTimer && (TIMED_PHASES as readonly string[]).includes(s.phase)) { this.armTurn(room, seat); return; }
+      if (online) return;
       const awayFor = m?.awaySince ? Date.now() - m.awaySince : AWAY_MS;
       if (awayFor < AWAY_MS) {
         room.timer = setTimeout(() => { this.broadcastRoom(room); this.pump(room); }, AWAY_MS - awayFor + 50);
@@ -354,6 +362,33 @@ export class RoomManager {
       const err = this.apply(room, action);
       if (err) console.error(`[${room.code}] computer move rejected`, action, err);
     }, delay);
+  }
+
+  /** Start (or keep) the move timer for a human on their turn; the computer moves for them when it runs out. */
+  private armTurn(room: Room, seat: Seat) {
+    const s = room.game!;
+    const secs = room.settings.turnTimer ?? 0;
+    if (!secs || !(TIMED_PHASES as readonly string[]).includes(s.phase)) { this.stopTurn(room); return; }
+    const total = secs * 1000 + (s.phase === 'PLAYING' && s.currentTrick?.plays.length === 0 && s.completedTricks.length === 0 ? 1500 : 0);
+    if (!room.turn || room.turn.game !== s || room.turn.seat !== seat) {
+      room.turn = { game: s, seat, at: Date.now() + total, total };
+      this.broadcast(room, { t: 'turn', seat, ms: total, total });
+    }
+    const left = Math.max(0, room.turn.at - Date.now());
+    room.timer = setTimeout(() => {
+      if (!room.game || room.game !== s) return;
+      room.turn = null;
+      const action = decideAIAction(getPlayerView(room.game, seat), room.settings.difficulty, serverRng);
+      if (!action) return;
+      const err = this.apply(room, action);
+      if (err) console.error(`[${room.code}] timed-out move rejected`, action, err);
+    }, left + 250);
+  }
+
+  private stopTurn(room: Room) {
+    if (!room.turn) return;
+    room.turn = null;
+    this.broadcast(room, { t: 'turn', seat: null, ms: 0, total: 0 });
   }
 
   /** Computer players' emoji habits on a Friends table. */
@@ -405,6 +440,25 @@ export class RoomManager {
     m.muted = on && muted;
     m.vs = on ? vs : '';
     this.broadcastRoom(room);
+  }
+
+  /**
+   * Voice audio relay: a binary frame from a voice member goes to every other voice member of
+   * the room, tagged with the sender's id. Frame in:  [1, ...payload]
+   *                                           frame out: [2, idLength, ...id, ...payload]
+   */
+  voiceData(c: Client, frame: Uint8Array) {
+    if (frame.length < 7 || frame.length > 2048 || frame[0] !== 1) return;
+    const room = this.roomOf(c);
+    const from = room?.members.get(c.id);
+    if (!room || !from?.voice || from.muted) return;
+    const id = Buffer.from(c.id, 'utf8');
+    const out = new Uint8Array(2 + id.length + frame.length - 1);
+    out[0] = 2; out[1] = id.length; out.set(id, 2); out.set(frame.subarray(1), 2 + id.length);
+    for (const [mid, m] of room.members) {
+      if (mid === c.id || !m.voice) continue;
+      for (const s of m.sockets) s.sendBinary?.(out);
+    }
   }
 
   /** Voice call set-up messages between two people in the same room's voice chat (relayed, never read). */
@@ -569,6 +623,7 @@ export function sanitizeSettings(raw: Partial<RoomSettings> | undefined): RoomSe
       X: cleanName(String(r.teamNames?.X ?? '')) || 'Team X',
       Y: cleanName(String(r.teamNames?.Y ?? '')) || 'Team Y',
     },
+    turnTimer: (TURN_TIMERS as readonly number[]).includes(Number(r.turnTimer)) ? Number(r.turnTimer) : 0,
   };
 }
 

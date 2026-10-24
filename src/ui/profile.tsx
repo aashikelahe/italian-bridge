@@ -1,3 +1,4 @@
+import { levelFromXp, xpOf } from './progress';
 /**
  * Your player profile: a unique player ID, and a photo or a ready-made avatar.
  * Kept in this browser; the game server learns it whenever you play online.
@@ -30,11 +31,9 @@ export function useProfile(): Profile {
   return useSyncExternalStore((l) => { listeners.add(l); return () => listeners.delete(l); }, () => current);
 }
 
-/** Experience and level from your local statistics. */
+/** Experience and level from your saved progress. */
 export function levelOf(st: Stats): { level: number; xp: number; from: number; to: number } {
-  const xp = st.matchesPlayed * 30 + st.matchesWon * 70 + st.contractsMade * 10 + st.passesMade * 4 + st.roundsPlayed * 3;
-  const level = Math.min(99, Math.floor(Math.sqrt(xp / 40)) + 1);
-  return { level, xp, from: 40 * (level - 1) ** 2, to: 40 * level ** 2 };
+  return levelFromXp(xpOf(st));
 }
 
 /** Read a photo file, crop it to a square and shrink it to a small JPEG data URL. */

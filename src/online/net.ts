@@ -88,6 +88,8 @@ export interface ServerState {
   left: 'left' | 'closed' | 'missing' | null;
   /** Relay servers for voice chat, from the game server. */
   ice?: RTCIceServer[] | null;
+  /** The move timer, if one is running (local clock). */
+  turn?: { seat: Seat; endsAt: number; total: number } | null;
 }
 
 /** Connects while mounted. `name` is your table name; changing it renames you. */
@@ -95,6 +97,8 @@ export interface ServerHandlers {
   onThrow?: (t: ThrowEvent) => void;
   onSmack?: (seat: Seat) => void;
   onRtc?: (from: string, data: unknown) => void;
+  /** A voice audio frame from another player: [2, idLength, ...id, ...payload]. */
+  onVoice?: (frame: Uint8Array) => void;
 }
 export interface ProfileResult { ok: boolean; handle: string; error?: string }
 
@@ -124,6 +128,7 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
       if (stopped) return;
       setSt((s) => ({ ...s, status: retry === 0 ? 'connecting' : 'offline' }));
       const sock = new WebSocket(url);
+      sock.binaryType = 'arraybuffer';
       ws.current = sock;
       sock.onopen = () => {
         retry = 0;
@@ -131,6 +136,7 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
         ping = window.setInterval(() => { if (sock.readyState === 1) sock.send('{"t":"ping"}'); }, 20_000);
       };
       sock.onmessage = (ev) => {
+        if (ev.data instanceof ArrayBuffer) { handlersRef.current.onVoice?.(new Uint8Array(ev.data)); return; }
         let m: ServerMsg;
         try { m = JSON.parse(ev.data); } catch { return; }
         switch (m.t) {
@@ -146,10 +152,13 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
           }
           case 'room':
             lsSet(ROOM_KEY, m.room.code);
-            setSt((s) => ({ ...s, room: m.room, left: null, view: m.room.status === 'lobby' ? null : s.view }));
+            setSt((s) => ({ ...s, room: m.room, left: null, view: m.room.status === 'lobby' ? null : s.view, turn: m.room.status === 'lobby' ? null : s.turn }));
             break;
           case 'view':
             setSt((s) => ({ ...s, view: m.view }));
+            break;
+          case 'turn':
+            setSt((s) => ({ ...s, turn: m.seat ? { seat: m.seat, endsAt: Date.now() + m.ms, total: m.total } : null }));
             break;
           case 'throw':
             handlersRef.current.onThrow?.({ id: ++throwSeq.current, from: m.from, to: m.to, e: m.e });
@@ -168,7 +177,7 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
             break;
           case 'left':
             lsSet(ROOM_KEY, null);
-            setSt((s) => ({ ...s, room: null, view: null, left: m.reason }));
+            setSt((s) => ({ ...s, room: null, view: null, turn: null, left: m.reason }));
             break;
           default:
             break;
@@ -206,9 +215,14 @@ export function useServer(name: string, handlers: ServerHandlers, profile: Extra
     if (sock && sock.readyState === 1 && ready.current) sock.send(JSON.stringify(m));
     else if (m.t !== 'throw' && m.t !== 'rtc' && m.t !== 'smack') queue.current.push(m);
   }, []);
+  /** Voice audio out (dropped while offline or when the connection is backed up). */
+  const sendBinary = useCallback((data: Uint8Array) => {
+    const sock = ws.current;
+    if (sock && sock.readyState === 1 && ready.current && sock.bufferedAmount < 64 * 1024) sock.send(data);
+  }, []);
   const clearError = useCallback(() => setSt((s) => ({ ...s, error: null })), []);
   const clearLeft = useCallback(() => setSt((s) => ({ ...s, left: null })), []);
-  return { ...st, send, clearError, clearLeft, profileResult };
+  return { ...st, send, sendBinary, clearError, clearLeft, profileResult };
 }
 
 export function inviteLink(code: string): string {

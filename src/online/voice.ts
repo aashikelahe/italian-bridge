@@ -1,35 +1,23 @@
 /**
- * Live voice chat for a room: everyone who joins the voice chat is connected directly to every
- * other voice member (WebRTC, audio only). The game server only passes the set-up messages along,
- * and hands out relay (TURN) details for networks where a direct link is impossible.
+ * Live voice chat for a room, carried by the game server.
  *
- * Robustness rules:
- * - Every join gets a fresh voice session id (vs). A member whose vs changes is reconnected from scratch.
- * - Each link has a connection id (cid) chosen by the caller; messages for an old cid are ignored,
- *   and an offer with a new cid replaces the old link. So a link can always be rebuilt cleanly.
- * - Links that fail, or don't connect within a few seconds, are restarted automatically.
+ * Every player's microphone is compressed (16 kHz, 4-bit ADPCM ≈ 64 kbit/s while talking, nothing
+ * while silent) and sent over the game's own connection; the server passes it to everyone else in
+ * the voice chat. Unlike direct phone-to-phone calls this works on every network — if a player can
+ * play online, they can hear and be heard by all the others.
+ *
+ * Playback goes through a local loopback call inside the page so the browser's echo canceller
+ * hears it too (no echo when players use their phone speakers).
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMsg, RoomInfo } from './protocol';
+import { adpcmDecode, adpcmEncode, type AdpcmState } from './adpcm';
 
-const STUN: RTCIceServer[] = [
-  { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-];
+const RATE = 16000;
+const FRAME = 960; // 60 ms
+const SPEAK_LEVEL = 0.014;
+const HANGOVER_MS = 450;
 
-interface Peer {
-  pc: RTCPeerConnection;
-  audio: HTMLAudioElement;
-  pending: RTCIceCandidateInit[];
-  initiator: boolean;
-  cid: string;
-  vs: string;
-  createdAt: number;
-  badSince: number | null;
-  restarts: number;
-}
-
-type Signal = { sdp?: RTCSessionDescriptionInit; ice?: RTCIceCandidateInit; cid: string; vs: string; toVs: string };
 export type LinkState = 'connecting' | 'connected' | 'trouble';
 
 export interface Voice {
@@ -39,7 +27,7 @@ export interface Voice {
   muted: boolean;
   /** Member ids currently talking (including you). */
   speaking: Set<string>;
-  /** State of your link to each other voice member. */
+  /** Kept for the UI: with the server relay every voice member is reachable. */
   links: Record<string, LinkState>;
   error: string | null;
   join: () => void;
@@ -48,276 +36,248 @@ export interface Voice {
 }
 
 export function voiceSupported(): boolean {
-  return typeof window !== 'undefined' && typeof RTCPeerConnection !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+  return typeof window !== 'undefined' && !!navigator.mediaDevices?.getUserMedia &&
+    !!(window.AudioContext ?? (window as unknown as { webkitAudioContext?: unknown }).webkitAudioContext);
 }
 
-const rid = () => Math.random().toString(36).slice(2, 10);
+const WORKLET = `class IbCap extends AudioWorkletProcessor{process(i){const c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor('ib-cap',IbCap);`;
+
+interface Rx { next: number; last: number }
 
 export function useVoice(
   room: RoomInfo | null, me: string | null, send: (m: ClientMsg) => void,
-  rtcRef: { current: ((from: string, data: unknown) => void) | null },
-  iceServers: RTCIceServer[] | null,
+  sendBinary: (data: Uint8Array) => void,
+  frameRef: { current: ((frame: Uint8Array) => void) | null },
 ): Voice {
   const [joined, setJoined] = useState(false);
   const [joining, setJoining] = useState(false);
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [speaking, setSpeaking] = useState<Set<string>>(new Set());
-  const [links, setLinks] = useState<Record<string, LinkState>>({});
-  const local = useRef<MediaStream | null>(null);
-  const peers = useRef(new Map<string, Peer>());
+
   const ctx = useRef<AudioContext | null>(null);
-  const meters = useRef(new Map<string, { an: AnalyserNode; src: MediaStreamAudioSourceNode; last: number }>());
-  const vsRef = useRef('');
-  const meRef = useRef(me);
-  meRef.current = me;
-  const mutedRef = useRef(muted);
-  mutedRef.current = muted;
-  const iceRef = useRef<RTCIceServer[]>(STUN);
-  iceRef.current = [...STUN, ...(iceServers ?? [])];
-  const roomRef = useRef(room);
-  roomRef.current = room;
+  const stream = useRef<MediaStream | null>(null);
+  const nodes = useRef<AudioNode[]>([]);
+  const out = useRef<AudioNode | null>(null);
+  const loop = useRef<{ a: RTCPeerConnection; b: RTCPeerConnection; el: HTMLAudioElement } | null>(null);
+  const rx = useRef(new Map<string, Rx>());
+  const enc = useRef<AdpcmState>({ pred: 0, index: 0 });
+  const pending = useRef<number[]>([]);
+  const seq = useRef(0);
+  const lastLoud = useRef(0);
+  const meRef = useRef(me); meRef.current = me;
+  const mutedRef = useRef(muted); mutedRef.current = muted;
+  const sendBinRef = useRef(sendBinary); sendBinRef.current = sendBinary;
+  const voiceIds = useRef(new Set<string>());
+  voiceIds.current = new Set((room?.members ?? []).filter((m) => m.voice).map((m) => m.id));
 
-  const refreshLinks = useCallback(() => {
-    const next: Record<string, LinkState> = {};
-    for (const [id, p] of peers.current) {
-      const st = p.pc.connectionState;
-      next[id] = st === 'connected' ? 'connected' : st === 'failed' || p.badSince ? 'trouble' : 'connecting';
+  // ---- outgoing: 60 ms frames, only while you are talking
+  const pushSamples = useCallback((input: Float32Array, inRate: number) => {
+    const buf = pending.current;
+    if (inRate === RATE) for (let i = 0; i < input.length; i++) buf.push(input[i]);
+    else {
+      // Down-sample, averaging neighbours (a simple low-pass so it doesn't sound harsh).
+      const r = inRate / RATE;
+      const w = Math.max(1, Math.round(r));
+      for (let t = 0; t < input.length; t += r) {
+        const at = Math.floor(t);
+        let sum = 0, n = 0;
+        for (let k = at; k < at + w && k < input.length; k++) { sum += input[k]; n++; }
+        buf.push(n ? sum / n : 0);
+      }
     }
-    setLinks((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next));
+    while (buf.length >= FRAME) {
+      const frame = Float32Array.from(buf.splice(0, FRAME));
+      let sum = 0;
+      for (let i = 0; i < FRAME; i++) sum += frame[i] * frame[i];
+      const rms = Math.sqrt(sum / FRAME);
+      const now = performance.now();
+      if (rms > SPEAK_LEVEL) lastLoud.current = now;
+      const active = !mutedRef.current && now - lastLoud.current < HANGOVER_MS;
+      if (!active) { enc.current = { pred: 0, index: 0 }; continue; }
+      const body = adpcmEncode(frame, enc.current);
+      const pkt = new Uint8Array(3 + body.length);
+      const s = (seq.current = (seq.current + 1) & 0xffff);
+      pkt[0] = 1; pkt[1] = s & 0xff; pkt[2] = s >> 8; pkt.set(body, 3);
+      sendBinRef.current(pkt);
+    }
   }, []);
 
-  // ---- talking indicators
-  const meter = useCallback((id: string, stream: MediaStream) => {
-    try {
-      if (!ctx.current) ctx.current = new AudioContext();
-      void ctx.current.resume();
-      meters.current.get(id)?.src.disconnect();
-      const src = ctx.current.createMediaStreamSource(stream);
-      const an = ctx.current.createAnalyser();
-      an.fftSize = 512;
-      src.connect(an);
-      meters.current.set(id, { an, src, last: 0 });
-    } catch { /* no meter: voice still works */ }
+  // ---- incoming: decode and schedule with a small jitter buffer
+  const onFrame = useCallback((f: Uint8Array) => {
+    const ac = ctx.current;
+    const dest = out.current;
+    if (!ac || !dest || f[0] !== 2) return;
+    const idLen = f[1];
+    const id = new TextDecoder().decode(f.subarray(2, 2 + idLen));
+    if (id === meRef.current || !voiceIds.current.has(id)) return;
+    const body = f.subarray(2 + idLen + 2); // skip the sequence number
+    const n = (body.length - 3) * 2;
+    if (n <= 0 || n > 4096) return;
+    const pcm = adpcmDecode(body, n);
+    const ab = ac.createBuffer(1, n, RATE);
+    ab.getChannelData(0).set(pcm);
+    const src = ac.createBufferSource();
+    src.buffer = ab;
+    src.connect(dest);
+    let r = rx.current.get(id);
+    if (!r) { r = { next: 0, last: 0 }; rx.current.set(id, r); }
+    const now = ac.currentTime;
+    if (r.next < now + 0.03 || r.next > now + 0.6) r.next = now + 0.12; // (re)start the buffer
+    src.start(r.next);
+    r.next += n / RATE;
+    r.last = performance.now();
   }, []);
+  frameRef.current = onFrame;
+
+  // ---- who is talking (others: frames arriving; you: your own level)
   useEffect(() => {
     if (!joined) return;
-    const buf = new Float32Array(512);
     const iv = window.setInterval(() => {
-      const now = Date.now();
+      const now = performance.now();
       const on = new Set<string>();
-      for (const [id, m] of meters.current) {
-        if (id === meRef.current && mutedRef.current) continue;
-        m.an.getFloatTimeDomainData(buf);
-        let sum = 0;
-        for (let k = 0; k < buf.length; k++) sum += buf[k] * buf[k];
-        if (Math.sqrt(sum / buf.length) > 0.03) m.last = now;
-        if (now - m.last < 450) on.add(id);
-      }
+      for (const [id, r] of rx.current) if (now - r.last < 350) on.add(id);
+      if (meRef.current && !mutedRef.current && now - lastLoud.current < 300) on.add(meRef.current);
       setSpeaking((prev) => (prev.size === on.size && [...on].every((x) => prev.has(x)) ? prev : on));
-    }, 120);
+    }, 150);
     return () => window.clearInterval(iv);
   }, [joined]);
 
-  // Phones may block sound that starts without a tap: every tap restarts any paused voice.
+  // Phones may suspend sound until a tap: every tap wakes it.
   useEffect(() => {
     if (!joined) return;
-    const unlock = () => {
-      void ctx.current?.resume();
-      for (const p of peers.current.values()) if (p.audio.srcObject && p.audio.paused) void p.audio.play().catch(() => undefined);
-    };
-    document.addEventListener('pointerdown', unlock, { passive: true });
-    return () => document.removeEventListener('pointerdown', unlock);
+    const wake = () => { void ctx.current?.resume(); void loop.current?.el.play().catch(() => undefined); };
+    document.addEventListener('pointerdown', wake, { passive: true });
+    return () => document.removeEventListener('pointerdown', wake);
   }, [joined]);
 
-  // ---- links
-  const closePeer = useCallback((id: string) => {
-    const p = peers.current.get(id);
-    if (!p) return;
-    p.pc.onicecandidate = null; p.pc.ontrack = null; p.pc.onconnectionstatechange = null; p.pc.oniceconnectionstatechange = null;
-    try { p.pc.close(); } catch { /* already closed */ }
-    p.audio.srcObject = null;
-    p.audio.remove();
-    peers.current.delete(id);
-    meters.current.get(id)?.src.disconnect();
-    meters.current.delete(id);
+  /** Route playback through a local loopback call so the echo canceller can remove it from the mic. */
+  const setupOutput = useCallback(async (ac: AudioContext) => {
+    const gain = ac.createGain();
+    gain.gain.value = 1.4;
+    out.current = gain;
+    try {
+      if (typeof RTCPeerConnection === 'undefined') throw new Error('no rtc');
+      const dest = ac.createMediaStreamDestination();
+      gain.connect(dest);
+      const a = new RTCPeerConnection();
+      const b = new RTCPeerConnection();
+      a.onicecandidate = (e) => { if (e.candidate) void b.addIceCandidate(e.candidate).catch(() => undefined); };
+      b.onicecandidate = (e) => { if (e.candidate) void a.addIceCandidate(e.candidate).catch(() => undefined); };
+      const el = document.createElement('audio');
+      el.autoplay = true; el.setAttribute('playsinline', ''); el.style.display = 'none';
+      document.body.appendChild(el);
+      const got = new Promise<void>((resolve) => { b.ontrack = (e) => { el.srcObject = e.streams[0] ?? new MediaStream([e.track]); void el.play().catch(() => undefined); resolve(); }; });
+      for (const t of dest.stream.getAudioTracks()) a.addTrack(t, dest.stream);
+      const offer = await a.createOffer();
+      await a.setLocalDescription(offer);
+      await b.setRemoteDescription(offer);
+      const answer = await b.createAnswer();
+      await b.setLocalDescription(answer);
+      await a.setRemoteDescription(answer);
+      await Promise.race([got, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 2500))]);
+      loop.current = { a, b, el };
+    } catch {
+      // No loopback: play directly.
+      try { gain.disconnect(); } catch { /* ignore */ }
+      gain.connect(ac.destination);
+    }
   }, []);
 
-  const signal = useCallback((to: string, p: Peer, data: Omit<Signal, 'cid' | 'vs' | 'toVs'>) => {
-    send({ t: 'rtc', to, data: { ...data, cid: p.cid, vs: vsRef.current, toVs: p.vs } satisfies Signal });
-  }, [send]);
-
-  const offer = useCallback(async (id: string, p: Peer, iceRestart = false) => {
-    try {
-      const o = await p.pc.createOffer({ iceRestart });
-      if (peers.current.get(id) !== p) return;
-      await p.pc.setLocalDescription(o);
-      signal(id, p, { sdp: p.pc.localDescription!.toJSON() });
-    } catch { /* the watchdog retries */ }
-  }, [signal]);
-
-  const makePeer = useCallback((id: string, vs: string, initiator: boolean, cid: string): Peer => {
-    closePeer(id);
-    const pc = new RTCPeerConnection({ iceServers: iceRef.current });
-    const audio = document.createElement('audio');
-    audio.autoplay = true;
-    audio.setAttribute('playsinline', '');
-    audio.style.display = 'none';
-    document.body.appendChild(audio);
-    const p: Peer = { pc, audio, pending: [], initiator, cid, vs, createdAt: Date.now(), badSince: null, restarts: 0 };
-    for (const tr of local.current?.getTracks() ?? []) pc.addTrack(tr, local.current!);
-    pc.onicecandidate = (e) => { if (e.candidate) signal(id, p, { ice: e.candidate.toJSON() }); };
-    pc.ontrack = (e) => {
-      const stream = e.streams[0] ?? new MediaStream([e.track]);
-      audio.srcObject = stream;
-      void audio.play().catch(() => undefined);
-      meter(id, stream);
-    };
-    pc.onconnectionstatechange = () => {
-      const st = pc.connectionState;
-      if (st === 'connected') { p.badSince = null; p.restarts = 0; }
-      else if ((st === 'failed' || st === 'disconnected') && !p.badSince) p.badSince = Date.now();
-      if (st === 'failed' && p.initiator) { p.restarts++; void offer(id, p, true); }
-      refreshLinks();
-    };
-    peers.current.set(id, p);
-    refreshLinks();
-    return p;
-  }, [closePeer, signal, meter, offer, refreshLinks]);
-
-  const call = useCallback((id: string, vs: string) => {
-    const p = makePeer(id, vs, true, rid());
-    void offer(id, p);
-  }, [makePeer, offer]);
-
-  const onSignal = useCallback(async (from: string, raw: unknown) => {
-    if (!local.current || !raw || typeof raw !== 'object') return;
-    const data = raw as Signal;
-    if (data.toVs && data.toVs !== vsRef.current) return; // meant for an earlier session of mine
-    let p = peers.current.get(from);
-    try {
-      if (data.sdp?.type === 'offer') {
-        // A new caller link (or a new session of theirs) replaces whatever we had.
-        if (!p || p.cid !== data.cid || p.vs !== data.vs || p.initiator) p = makePeer(from, data.vs, false, data.cid);
-        await p.pc.setRemoteDescription(data.sdp);
-        for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => undefined);
-        const a = await p.pc.createAnswer();
-        await p.pc.setLocalDescription(a);
-        signal(from, p, { sdp: p.pc.localDescription!.toJSON() });
-      } else if (data.sdp?.type === 'answer') {
-        if (!p || p.cid !== data.cid) return;
-        if (p.pc.signalingState === 'have-local-offer') await p.pc.setRemoteDescription(data.sdp);
-        for (const c of p.pending.splice(0)) await p.pc.addIceCandidate(c).catch(() => undefined);
-      } else if (data.ice) {
-        if (!p || p.cid !== data.cid) return;
-        if (p.pc.remoteDescription) await p.pc.addIceCandidate(data.ice).catch(() => undefined);
-        else p.pending.push(data.ice);
-      }
-    } catch { /* the watchdog rebuilds a broken link */ }
-    refreshLinks();
-  }, [makePeer, signal, refreshLinks]);
-  rtcRef.current = (from, data) => { void onSignal(from, data); };
-
-  // Connect to every other voice member; the member with the smaller id makes the call.
-  const others = joined && room && me
-    ? room.members.filter((m) => m.voice && m.online && m.id !== me).map((m) => `${m.id}:${m.vs ?? ''}`).sort().join(',')
-    : '';
-  useEffect(() => {
-    if (!joined || !me) return;
-    const want = new Map((others ? others.split(',') : []).map((x) => { const [id, vs] = x.split(':'); return [id, vs] as const; }));
-    for (const [id, p] of [...peers.current]) if (!want.has(id) || (p.vs && want.get(id) !== p.vs)) closePeer(id);
-    for (const [id, vs] of want) {
-      if (peers.current.has(id)) continue;
-      if (me < id) call(id, vs);
+  const teardown = useCallback(() => {
+    for (const n of nodes.current) { try { n.disconnect(); } catch { /* ignore */ } }
+    nodes.current = [];
+    stream.current?.getTracks().forEach((t) => t.stop());
+    stream.current = null;
+    if (loop.current) {
+      loop.current.a.close(); loop.current.b.close();
+      loop.current.el.srcObject = null; loop.current.el.remove();
+      loop.current = null;
     }
-    refreshLinks();
-  }, [others, joined, me, closePeer, call, refreshLinks]);
+    out.current = null;
+    rx.current.clear();
+    pending.current = [];
+    void ctx.current?.close().catch(() => undefined);
+    ctx.current = null;
+  }, []);
 
-  // Watchdog: restart links that are stuck or broken.
-  useEffect(() => {
-    if (!joined) return;
-    const iv = window.setInterval(() => {
-      const now = Date.now();
-      for (const [id, p] of [...peers.current]) {
-        const st = p.pc.connectionState;
-        if (st === 'connected') continue;
-        const stuck = now - p.createdAt > 12_000 && st !== 'connecting';
-        const longBad = p.badSince && now - p.badSince > 6_000;
-        const tooSlow = now - p.createdAt > 20_000;
-        if (!(stuck || longBad || tooSlow)) continue;
-        if (p.initiator) call(id, p.vs);       // fresh link with a new connection id
-        else if (now - p.createdAt > 30_000) closePeer(id); // the caller will ring again
-      }
-      refreshLinks();
-    }, 3000);
-    return () => window.clearInterval(iv);
-  }, [joined, call, closePeer, refreshLinks]);
-
-  const announce = useCallback((on: boolean, m: boolean) => send({ t: 'voice', on, muted: m, vs: on ? vsRef.current : '' }), [send]);
+  const announce = useCallback((on: boolean, m: boolean) => send({ t: 'voice', on, muted: m }), [send]);
 
   const leave = useCallback(() => {
-    for (const id of [...peers.current.keys()]) closePeer(id);
-    local.current?.getTracks().forEach((t) => t.stop());
-    local.current = null;
-    meters.current.forEach((m) => m.src.disconnect());
-    meters.current.clear();
+    teardown();
     setJoined(false);
     setMuted(false);
     setSpeaking(new Set());
-    setLinks({});
     announce(false, false);
-  }, [closePeer, announce]);
+  }, [teardown, announce]);
 
   const join = useCallback(() => {
     if (joined || joining) return;
     if (!voiceSupported()) { setError('Voice chat does not work in this browser.'); return; }
     setJoining(true);
     setError(null);
-    // Create the audio context inside the tap so phones allow sound.
-    try { if (!ctx.current) ctx.current = new AudioContext(); void ctx.current.resume(); } catch { /* ignore */ }
-    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false })
-      .then((stream) => {
-        local.current = stream;
-        vsRef.current = rid();
-        if (meRef.current) meter(meRef.current, stream);
+    const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    let ac: AudioContext;
+    // Firefox cannot connect a microphone to a context at another sample rate: use its own rate there.
+    const firefox = typeof navigator !== 'undefined' && /firefox/i.test(navigator.userAgent);
+    try { ac = firefox ? new AC() : new AC({ sampleRate: RATE }); } catch { ac = new AC(); }
+    ctx.current = ac;
+    void ac.resume();
+    navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }, video: false })
+      .then(async (ms) => {
+        stream.current = ms;
+        await setupOutput(ac);
+        const srcNode = ac.createMediaStreamSource(ms);
+        const silent = ac.createGain();
+        silent.gain.value = 0;
+        silent.connect(ac.destination);
+        let cap: AudioNode;
+        if (ac.audioWorklet) {
+          const url = URL.createObjectURL(new Blob([WORKLET], { type: 'text/javascript' }));
+          await ac.audioWorklet.addModule(url);
+          URL.revokeObjectURL(url);
+          const w = new AudioWorkletNode(ac, 'ib-cap');
+          w.port.onmessage = (e) => pushSamples(e.data as Float32Array, ac.sampleRate);
+          cap = w;
+        } else {
+          const sp = ac.createScriptProcessor(1024, 1, 1);
+          sp.onaudioprocess = (e) => pushSamples(e.inputBuffer.getChannelData(0), ac.sampleRate);
+          cap = sp;
+        }
+        srcNode.connect(cap);
+        cap.connect(silent);
+        nodes.current = [srcNode, cap, silent];
         setJoined(true);
         setMuted(false);
         announce(true, false);
       })
-      .catch(() => setError('The microphone is blocked. Allow it in the browser to use voice chat.'))
+      .catch(() => { teardown(); setError('The microphone is blocked. Allow it in the browser to use voice chat.'); })
       .finally(() => setJoining(false));
-  }, [joined, joining, meter, announce]);
+  }, [joined, joining, pushSamples, setupOutput, teardown, announce]);
 
   const toggleMute = useCallback(() => {
     const next = !mutedRef.current;
-    local.current?.getAudioTracks().forEach((t) => { t.enabled = !next; });
+    stream.current?.getAudioTracks().forEach((t) => { t.enabled = !next; });
     setMuted(next);
     announce(true, next);
   }, [announce]);
 
-  // After a reconnect the server has forgotten that we are in the call: start a fresh session.
-  // (Only when the server's record goes from "in voice" to "not in voice" while we are still in.)
+  // After a reconnect the server has forgotten that we are in the call: tell it again.
   const meVoice = room?.members.find((m) => m.id === me)?.voice;
   const wasIn = useRef(false);
   useEffect(() => {
     if (!joined) { wasIn.current = false; return; }
     if (meVoice) { wasIn.current = true; return; }
-    if (meVoice === false && wasIn.current) {
-      wasIn.current = false;
-      for (const id of [...peers.current.keys()]) closePeer(id);
-      vsRef.current = rid();
-      announce(true, mutedRef.current);
-    }
-  }, [joined, meVoice, closePeer, announce]);
+    if (meVoice === false && wasIn.current) { wasIn.current = false; announce(true, mutedRef.current); }
+  }, [joined, meVoice, announce]);
 
   // Leaving the room ends the call.
   const inRoom = !!room;
-  useEffect(() => { if (!inRoom && local.current) leave(); }, [inRoom, leave]);
-  useEffect(() => () => {
-    for (const id of [...peers.current.keys()]) closePeer(id);
-    local.current?.getTracks().forEach((t) => t.stop());
-    void ctx.current?.close().catch(() => undefined);
-  }, [closePeer]);
+  useEffect(() => { if (!inRoom && stream.current) leave(); }, [inRoom, leave]);
+  useEffect(() => () => teardown(), [teardown]);
+
+  const links: Record<string, LinkState> = {};
+  if (joined && room) for (const m of room.members) if (m.voice && m.id !== me) links[m.id] = 'connected';
 
   return { supported: voiceSupported(), joined, joining, muted, speaking, links, error, join, leave, toggleMute };
 }

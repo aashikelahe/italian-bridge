@@ -323,3 +323,11 @@ export function buzz(pattern: number | number[]) {
   if (!haptics) return;
   try { navigator.vibrate?.(pattern); } catch { /* not supported */ }
 }
+
+/** The move timer is running out: a clock tick (higher on the last second). */
+export function playTick(last = false) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime;
+  tone(ac, t, last ? 1500 : 1100, 0.06, 0.12, 'square');
+}
