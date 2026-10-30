@@ -1457,3 +1457,21 @@ body { background: var(--page); }
 .acct-who { margin: 0; }
 .account-card h2 { margin: 0; }
 .timer-pick .seg-opts { margin-top: 4px; }
+
+/* ---------- closing a settled round ---------- */
+.close-round { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-width: min(260px, 40cqw); padding: 7px 10px; border-radius: 14px; font-size: 0.78rem; line-height: 1.25; animation: pop-in 0.3s ease-out both; }
+.close-round > b { color: #ffe9a8; font-size: 0.86rem; }
+.close-round .cr-long { font-size: 0.74rem; }
+.close-round .cr-short { display: none; font-size: 0.74rem; font-weight: 600; }
+.close-round.voted { border-color: rgba(242,199,92,0.6); }
+.cr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.close-votes { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; }
+.close-votes i { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,0.2); border: 1px solid rgba(255,255,255,0.35); }
+.close-votes i.on { background: #6fdc8c; border-color: #b8f5c8; box-shadow: 0 0 6px rgba(111,220,140,0.8); }
+.close-votes i:last-of-type { margin-right: 2px; }
+.close-round .act-btn { padding: 6px 12px; font-size: 0.8rem; }
+@media (max-height: 520px) {
+  .close-round { padding: 5px 8px; gap: 3px; }
+  .close-round .cr-long { display: none; }
+  .close-round .cr-short { display: block; }
+}

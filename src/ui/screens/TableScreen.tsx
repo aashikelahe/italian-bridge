@@ -69,6 +69,15 @@ export interface TableScreenProps {
   voice?: Voice;
   /** Change settings from the table (card style). */
   onChangeSettings?: (s: Settings) => void;
+  /** Closing a settled round early: who must agree, who has, and how to agree. */
+  closeRound: CloseRound;
+}
+
+export interface CloseRound {
+  /** Seats of the people who must agree (computer players don't count). */
+  people: Seat[];
+  votes: Seat[];
+  onVote: (on: boolean) => void;
 }
 
 function phaseLabel(i: ReturnType<typeof useI18n>, p: string): string {
@@ -185,6 +194,7 @@ export function TableScreen(props: TableScreenProps) {
 
   const actions = (
     <div className="tbl-actions">
+      {view.canCloseRound && <CloseRoundCard view={view} close={props.closeRound} />}
       {view.canRevealVoluntarily && <button className="act-btn gold" onClick={() => dispatch({ type: 'REVEAL_VOLUNTARY', seat: me })}>{i.t('Reveal trump and play one')}</button>}
       {view.canRequestReveal && <button className="act-btn gold" onClick={() => dispatch({ type: 'REQUEST_REVEAL', seat: me })}>{i.t('Ask to see trump')}</button>}
       {canSmack && (
@@ -340,6 +350,33 @@ export function TableScreen(props: TableScreenProps) {
           <button className="btn ghost small" onClick={() => { setUprightOk(true); lsSet('ib.upright', '1'); }}>{i.t('Keep it upright')}</button>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Shown once the round's points can't change: everyone taps it to end the round now. */
+function CloseRoundCard({ view, close }: { view: PlayerView; close: CloseRound }) {
+  const i = useI18n();
+  const seatName = useSeatName(view.players);
+  const mine = close.votes.includes(view.seat);
+  const shared = close.people.length > 1;
+  const agreed = close.people.filter((s) => close.votes.includes(s));
+  return (
+    <div className={`close-round glass ${mine ? 'voted' : ''}`} role="region" aria-label={i.t('Result decided')}>
+      <b>✔ {i.t('Result decided')}</b>
+      <span className="muted cr-long">{mine ? i.t('The computer is playing your cards until everyone agrees.') : i.t('The points for this round can’t change any more.')}</span>
+      {mine && <span className="cr-short">🤖 {i.t('Computer is playing for you')}</span>}
+      <div className="cr-row">
+        {shared && (
+          <span className="close-votes" title={agreed.map((s) => seatName(s)).join(', ')}>
+            {close.people.map((s) => <i key={s} className={close.votes.includes(s) ? 'on' : ''} aria-hidden />)}
+            {i.t('{n} of {m} agreed', { n: i.num(agreed.length), m: i.num(close.people.length) })}
+          </span>
+        )}
+        {mine
+          ? <button className="btn small ghost" onClick={() => close.onVote(false)}>{i.t('Play myself')}</button>
+          : <button className="act-btn gold" onClick={() => close.onVote(true)}>{i.t('Close round')}</button>}
+      </div>
     </div>
   );
 }

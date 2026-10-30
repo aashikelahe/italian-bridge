@@ -2,7 +2,7 @@ import { RoomManager, sanitizeSettings, type Client } from '../server/rooms';
 import type { ServerMsg, RoomInfo, RoomSettings } from '../src/online/protocol';
 import type { PlayerView } from '../src/engine/view';
 import { decideAIAction } from '../src/ai';
-import { seededRng, DEFAULT_RULES, type Seat } from '../src/engine';
+import { seededRng, roundSettled, DEFAULT_RULES, type Seat } from '../src/engine';
 
 interface Fake extends Client { inbox: ServerMsg[]; lastRoom(): RoomInfo | null; lastView(): PlayerView | null }
 
@@ -276,6 +276,52 @@ describe('game server rooms', () => {
     expect(rm.rooms.get(code)!.game).not.toBe(g); // moved for them
     // timer off: waits as long as needed
     expect(sanitizeSettings({ ...SETTINGS, turnTimer: 99 }).turnTimer).toBe(0);
+  });
+
+  it('closing a settled round: only when settled, computer plays for those who agreed, closes when everyone agrees', () => {
+    const { rm, host, guest, code } = setup();
+    rm.handle(host, { t: 'start' });
+    const room = () => rm.rooms.get(code)!;
+    const people = { host, guest };
+    // Too early: refused.
+    playUntil(rm, code, people, () => room().game!.phase === 'PLAYING');
+    if (!roundSettled(room().game!)) {
+      rm.handle(guest, { t: 'closeVote', on: true });
+      expect(guest.inbox.at(-1)).toMatchObject({ t: 'error' });
+      expect(room().closeVotes ?? []).toEqual([]);
+    }
+    // Play rounds until one is settled with tricks still to play.
+    for (let n = 0; n < 20 && !roundSettled(room().game!); n++) {
+      playUntil(rm, code, people, () => roundSettled(room().game!) || room().game!.phase === 'ROUND_RESULT');
+      if (room().game!.phase === 'ROUND_RESULT') rm.handle(host, { t: 'act', action: { type: 'NEXT_ROUND' } });
+    }
+    expect(roundSettled(room().game!)).toBe(true);
+    expect(host.lastView()!.canCloseRound).toBe(true);
+
+    // Ashik agrees; Rahim doesn't yet. Ashik's cards are now played by the computer.
+    rm.handle(host, { t: 'closeVote', on: true });
+    expect(guest.lastRoom()!.closeVotes).toEqual(['C']);
+    const handBefore = room().game!.players.C.hand.length;
+    playUntil(rm, code, { guest }, () => room().game!.players.C.hand.length < handBefore || room().game!.phase === 'ROUND_RESULT');
+    expect(room().game!.players.C.hand.length < handBefore || room().game!.phase === 'ROUND_RESULT').toBe(true);
+
+    if (room().game!.phase !== 'ROUND_RESULT') {
+      // He changes his mind, then agrees again.
+      rm.handle(host, { t: 'closeVote', on: false });
+      expect(guest.lastRoom()!.closeVotes).toEqual([]);
+      rm.handle(host, { t: 'closeVote', on: true });
+      const tricks = room().game!.completedTricks.length;
+      // Rahim agrees too: the round closes.
+      rm.handle(guest, { t: 'closeVote', on: true });
+      vi.advanceTimersByTime(3000);
+      const g = room().game!;
+      expect(g.phase).toBe('ROUND_RESULT');
+      // Closed early, unless the last trick was already finishing on the table.
+      const closedAfter = g.roundHistory.at(-1)!.closedAfter;
+      if (closedAfter === undefined) expect(g.completedTricks).toHaveLength(13);
+      else expect(closedAfter >= tricks && closedAfter < 13).toBe(true);
+      expect(host.lastRoom()!.closeVotes).toEqual([]);
+    }
   });
 
   it('joining a missing room says so', () => {

@@ -28,6 +28,7 @@ export function TrumpSeal({ view, onReveal, onRequest }: { view: PlayerView; onR
 
   if (trump.revealed && trump.revealedCard) {
     const how = trump.revealedHow === 'mandatory' ? i.t('Revealed before the last trick')
+      : trump.revealedHow === 'closed' ? i.t('Shown when the round was closed')
       : trump.revealedHow === 'voluntary' ? i.t('Revealed by {p}', { p: seatName(trump.bidder) })
       : trump.revealedBy === view.seat ? i.t('Shown at your request') : i.t('Shown at {p}’s request', { p: seatName(trump.revealedBy!) });
     const s = trump.revealedCard.suit;

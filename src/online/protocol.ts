@@ -52,6 +52,8 @@ export interface RoomInfo {
   chat: ChatMsg[];
   /** Seats whose player is away and being played by the computer for now. */
   autoplay: Seat[];
+  /** The round's result is settled and these players asked to close it (the computer plays their cards meanwhile). */
+  closeVotes?: Seat[];
 }
 
 export type ClientMsg =
@@ -67,6 +69,8 @@ export type ClientMsg =
   | { t: 'act'; action: Action }
   | { t: 'throw'; to: Seat; e: string }
   | { t: 'smack' }
+  /** Agree (or stop agreeing) to close a settled round. */
+  | { t: 'closeVote'; on: boolean }
   | { t: 'profile'; handle: string; avatar: string | null; level: number }
   | { t: 'voice'; on: boolean; muted: boolean; vs?: string }
   | { t: 'rtc'; to: string; data: unknown }

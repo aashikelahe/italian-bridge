@@ -5,7 +5,7 @@
  */
 import { randomBytes, randomInt } from 'node:crypto';
 import type { Action, GameState, Rng, RuleConfig, Seat } from '../src/engine/types';
-import { applyAction, createMatch } from '../src/engine/game';
+import { applyAction, createMatch, roundSettled } from '../src/engine/game';
 import { getPlayerView } from '../src/engine/view';
 import { DEFAULT_RULES, MATCH_TARGETS } from '../src/engine/config';
 import { SEATS, areOpponents, teamOf } from '../src/engine/seating';
@@ -52,6 +52,8 @@ export interface Room {
   lastBotSmackAt: number;
   /** The running move timer (not saved). */
   turn?: { game: GameState; seat: Seat; at: number; total: number } | null;
+  /** Seats that agreed to close the current (settled) round. */
+  closeVotes?: Seat[];
 }
 
 const MAX_ROOMS = 500;
@@ -79,6 +81,7 @@ export class RoomManager {
       case 'act': return this.act(c, m.action);
       case 'throw': return this.throwEmoji(c, m.to, m.e);
       case 'smack': return this.smack(c);
+      case 'closeVote': return this.closeVote(c, !!m.on);
       case 'profile': return this.setProfile(c, m.handle, m.avatar, m.level);
       case 'voice': return this.voice(c, !!m.on, !!m.muted, String(m.vs ?? '').slice(0, 16));
       case 'rtc': return this.rtc(c, String(m.to ?? ''), m.data);
@@ -244,6 +247,7 @@ export class RoomManager {
       })) as Record<Seat, { name: string; type: 'human' | 'ai' }>,
     });
     room.status = 'playing';
+    room.closeVotes = [];
     room.lastActive = Date.now();
     this.broadcastRoom(room);
     this.broadcastViews(room);
@@ -281,12 +285,42 @@ export class RoomManager {
     room.game = r.state;
     room.lastActive = Date.now();
     if (r.state.phase === 'MATCH_OVER') room.status = 'over';
+    const hadVotes = !!room.closeVotes?.length;
+    if (!roundSettled(r.state)) room.closeVotes = [];
     this.afterChange(room, prev, r.state);
     this.broadcastViews(room);
-    if (prev.phase !== r.state.phase) this.broadcastRoom(room);
+    if (prev.phase !== r.state.phase || (hadVotes && !room.closeVotes?.length)) this.broadcastRoom(room);
     this.pump(room);
     this.onDirty();
     return null;
+  }
+
+  /** Agree (or stop agreeing) to close a settled round. Until everyone agrees, the computer plays your cards. */
+  private closeVote(c: Client, on: boolean) {
+    const room = this.roomOf(c);
+    if (!room?.game || room.status !== 'playing') return;
+    const seat = this.seatOf(room, c.id);
+    if (!seat) return;
+    if (on && !roundSettled(room.game)) return this.err(c, 'The round can be closed only when its result can no longer change');
+    const votes = (room.closeVotes ?? []).filter((s) => s !== seat);
+    room.closeVotes = on ? [...votes, seat] : votes;
+    const m = room.members.get(c.id);
+    if (m) m.awaySince = null;
+    this.broadcastRoom(room);
+    this.pump(room);
+  }
+
+  /** Every person at the table agreed to close the round (away players count as agreeing). */
+  private everyoneAgreed(room: Room): boolean {
+    const votes = room.closeVotes ?? [];
+    return votes.length > 0 && SEATS.every((s) => !room.seats[s] || votes.includes(s) || this.isAway(room, s));
+  }
+
+  /** A seated person who has been gone long enough for the computer to play for them. */
+  private isAway(room: Room, seat: Seat): boolean {
+    const id = room.seats[seat];
+    const m = id ? room.members.get(id) : null;
+    return !!id && (!m || (m.sockets.size === 0 && !!m.awaySince && Date.now() - m.awaySince >= AWAY_MS));
   }
 
   private backToLobby(c: Client) {
@@ -331,6 +365,11 @@ export class RoomManager {
       room.timer = setTimeout(() => this.apply(room, { type: 'COLLECT_TRICK' }), ms);
       return;
     }
+    if (roundSettled(s) && this.everyoneAgreed(room)) {
+      this.stopTurn(room);
+      room.timer = setTimeout(() => this.apply(room, { type: 'CLOSE_ROUND' }), 700);
+      return;
+    }
     const auto = automaticAction(s);
     if (auto) {
       const ms = (PACE_MS[s.phase as keyof typeof PACE_MS] ?? 800) * k;
@@ -342,7 +381,10 @@ export class RoomManager {
     const id = room.seats[seat];
     const human = !!id;
     let delay = (PACE_MS[s.phase as keyof typeof PACE_MS] ?? 1000) * k;
-    if (human) {
+    // Agreed to close the round: the computer plays for them (no move timer) until everyone agrees.
+    const agreed = human && !!room.closeVotes?.includes(seat);
+    if (agreed) this.stopTurn(room);
+    if (human && !agreed) {
       const m = room.members.get(id!);
       const online = !!m && m.sockets.size > 0;
       // With the move timer on, the timer decides (online or not); otherwise wait for them.
@@ -524,14 +566,7 @@ export class RoomManager {
   }
 
   info(room: Room): RoomInfo {
-    const autoplay: Seat[] = [];
-    if (room.game && room.status === 'playing') {
-      for (const s of SEATS) {
-        const id = room.seats[s];
-        const m = id ? room.members.get(id) : null;
-        if (id && (!m || (m.sockets.size === 0 && m.awaySince && Date.now() - m.awaySince >= AWAY_MS))) autoplay.push(s);
-      }
-    }
+    const autoplay: Seat[] = room.game && room.status === 'playing' ? SEATS.filter((s) => this.isAway(room, s)) : [];
     return {
       code: room.code,
       hostId: room.hostId,
@@ -544,6 +579,7 @@ export class RoomManager {
       }),
       chat: room.chat.slice(-CHAT_KEEP),
       autoplay,
+      closeVotes: room.status === 'playing' ? [...(room.closeVotes ?? [])] : [],
     };
   }
 

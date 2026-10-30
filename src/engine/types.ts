@@ -106,7 +106,7 @@ export interface BiddingState {
   passed: Seat[];
 }
 
-export type RevealHow = 'voluntary' | 'request' | 'mandatory';
+export type RevealHow = 'voluntary' | 'request' | 'mandatory' | 'closed';
 
 export interface TrumpState {
   /** The highest bidder, who owns the reserved card. */
@@ -142,6 +142,8 @@ export interface RoundSummary {
   revealedHow: RevealHow;
   players: RoundPlayerResult[];
   teams: { id: TeamId; contract: 'bid' | 'pass'; target: number; tricks: number; roundScore: number; cumulativeScore: number }[] | null;
+  /** Set when everyone agreed to close the round early: the number of tricks played by then. */
+  closedAfter?: number;
 }
 
 export type MatchWinner =
@@ -269,6 +271,8 @@ export type Action =
   | { type: 'PLAY_CARD'; seat: Seat; cardId: string }
   | { type: 'COLLECT_TRICK' }
   | { type: 'MANDATORY_REVEAL' }
+  /** Everyone agreed to stop a round whose result can no longer change (see roundSettled). */
+  | { type: 'CLOSE_ROUND' }
   | { type: 'NEXT_ROUND' };
 
 export type ActionResult = { ok: true; state: GameState } | { ok: false; error: string };

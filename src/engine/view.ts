@@ -9,7 +9,7 @@ import type {
 } from './types';
 import { SEATS, teamOf } from './seating';
 import { canRequestReveal, canRevealVoluntarily, type RevealContext } from './rules';
-import { legalCardIds, reshuffleAllowed } from './game';
+import { legalCardIds, reshuffleAllowed, roundSettled } from './game';
 
 export interface PublicPlayer {
   seat: Seat;
@@ -72,6 +72,8 @@ export interface PlayerView {
   lastShuffle: GameState['lastShuffle'];
   /** The Bonus call round (after the second deal). */
   bonus: BonusState | null;
+  /** The round's result can no longer change, so the players may agree to close it now. */
+  canCloseRound: boolean;
 }
 
 export function getPlayerView(state: GameState, seat: Seat): PlayerView {
@@ -134,6 +136,7 @@ export function getPlayerView(state: GameState, seat: Seat): PlayerView {
     mustPlayTrump: state.trump.mustPlayTrump === seat,
     lastShuffle: state.lastShuffle,
     bonus: state.bonus ? structuredClone(state.bonus) : null,
+    canCloseRound: roundSettled(state),
   };
 }
 

@@ -588,4 +588,16 @@ export const BN: Record<string, string> = {
   'That email address does not look right.': 'ইমেইল ঠিকানাটা ঠিক মনে হচ্ছে না।',
   'That code is wrong or has expired. Ask for a new one.': 'কোড ভুল বা মেয়াদ শেষ। নতুন কোড চান।',
   'Too many tries. Wait 15 minutes and try again.': 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।',
+  // Closing a settled round early
+  'Result decided': 'ফল নিশ্চিত',
+  'The points for this round can’t change any more.': 'এই দানের পয়েন্ট আর বদলাবে না।',
+  'The computer is playing your cards until everyone agrees.': 'সবাই রাজি না হওয়া পর্যন্ত কম্পিউটার আপনার তাস খেলছে।',
+  '{n} of {m} agreed': '{m} জনের মধ্যে {n} জন রাজি',
+  'Close round': 'দান শেষ করুন',
+  'Play myself': 'নিজে খেলব',
+  'Computer is playing for you': 'কম্পিউটার আপনার হয়ে খেলছে',
+  'Closed early by agreement after {n} tricks.': 'সবার সম্মতিতে {n}টি পিঠের পর দান শেষ করা হয়েছে।',
+  'Everyone agreed to close the round after {n} tricks.': 'সবার সম্মতিতে {n}টি পিঠের পর দান শেষ করা হলো।',
+  'The round can be closed only when its result can no longer change': 'ফল নিশ্চিত হলেই কেবল দান শেষ করা যায়',
+  'Shown when the round was closed': 'দান শেষ করার সময় দেখানো হয়েছে',
 };

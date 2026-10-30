@@ -1,9 +1,9 @@
 {
-  "versionCode": 4,
-  "versionName": "1.0.3",
+  "versionCode": 5,
+  "versionName": "1.0.4",
   "minVersionCode": 4,
   "notes": {
-    "en": "• New voice chat: all four players hear each other on any network\n• Move timer: choose No timer, 15, 30 or 45 seconds\n• XP and levels: win rounds and matches to unlock card styles and tables\n• Accounts: sign in with your player ID on any device\n• “Wins the trick” note no longer hides under a name",
-    "bn": "• নতুন ভয়েস চ্যাট: যেকোনো নেটওয়ার্কে চারজনই সবার কথা শুনবে\n• চালের টাইমার: টাইমার নেই, ১৫, ৩০ বা ৪৫ সেকেন্ড\n• XP ও লেভেল: রাউন্ড ও ম্যাচ জিতে নতুন কার্ড ও টেবিল খুলুন\n• অ্যাকাউন্ট: যেকোনো ডিভাইসে প্লেয়ার আইডি দিয়ে সাইন ইন\n• “ট্রিক জিতেছে” লেখা আর নামের নিচে লুকায় না"
+    "en": "• Close a round early: when the result can no longer change, a “Close round” button appears — when every player taps it, the round ends and the points are added\n• Until everyone agrees, the computer plays for whoever tapped; tap “Play myself” to take over again\n• The rules page explains the new option",
+    "bn": "• দান আগে শেষ করুন: ফল আর বদলাতে না পারলে “দান শেষ করুন” বোতাম আসে — সবাই চাপলে দান শেষ হয় আর পয়েন্ট যোগ হয়\n• সবাই রাজি না হওয়া পর্যন্ত যে চেপেছে তার হয়ে কম্পিউটার খেলে; আবার নিজে খেলতে “নিজে খেলব” চাপুন\n• নিয়মের পাতায় নতুন সুবিধাটির ব্যাখ্যা আছে"
   }
 }

@@ -409,6 +409,94 @@ function finishRound(state: GameState) {
   log(state, 'Round {n} complete.', { n: state.round });
 }
 
+/** The winner takes the four cards on the table; then the next trick, the mandatory reveal or the end of the round. */
+function collectTrick(state: GameState) {
+  const t = state.currentTrick!;
+  const w = state.players[t.winner!];
+  w.captured.push(...t.plays.map((pl) => pl.card));
+  w.tricksWon += 1;
+  state.completedTricks.push({
+    index: t.index, leader: t.leader, ledSuit: t.ledSuit!, winner: t.winner!,
+    plays: t.plays.map((pl) => ({ seat: pl.seat, cardId: pl.card.id, trumpLive: pl.trumpLive })),
+  });
+  log(state, 'Trick {n} won by {p}.', { n: t.index, p: t.winner! });
+  const winner = t.winner!;
+  state.currentTrick = null;
+  const done = state.completedTricks.length;
+  if (done === 13) {
+    finishRound(state);
+  } else {
+    const leader = state.config.nextTrickLeader === 'afterWinner' ? nextSeat(winner) : winner;
+    if (done === 12 && !state.trump.revealed) {
+      state.phase = 'MANDATORY_REVEAL';
+      state.pendingLeader = leader;
+      state.currentPlayer = null;
+    } else {
+      startTrick(state, leader);
+    }
+  }
+}
+
+/**
+ * True when the round's points can no longer change: every side (team, or player in individual
+ * mode) has already reached its target or can no longer reach it even by winning every trick left.
+ * Only collected tricks count. The players may then agree to close the round early.
+ */
+export function roundSettled(state: GameState): boolean {
+  if (state.phase !== 'PLAYING' && state.phase !== 'MANDATORY_REVEAL') return false;
+  const bid = state.bidding.highestBid;
+  if (!state.trump.bidder || !bid) return false;
+  const left = 13 - state.completedTricks.length;
+  if (left <= 0) return false;
+  const sides: { target: number; tricks: number }[] = [];
+  if (state.mode === 'team' && state.config.teamScoring === 'teamContract' && state.teams) {
+    const bidTeam = teamOf(state.trump.bidder);
+    for (const t of state.teams) {
+      sides.push({
+        target: t.id === bidTeam ? bid : state.config.passTarget,
+        tricks: state.players[t.members[0]].tricksWon + state.players[t.members[1]].tricksWon,
+      });
+    }
+  } else {
+    for (const seat of SEATS) {
+      const p = state.players[seat];
+      if (p.bid.kind === 'none') return false;
+      sides.push({ target: p.bid.kind === 'bid' ? p.bid.amount : state.config.passTarget, tricks: p.tricksWon });
+    }
+  }
+  return sides.every((s) => s.tricks >= s.target || s.tricks + left < s.target);
+}
+
+/**
+ * End a settled round now. Unplayed cards (hands, the table, a still-hidden trump) join their
+ * holders' piles so the next shuffle still has all 52 cards; tricks already won stand as they are.
+ */
+function closeRound(state: GameState) {
+  const played = state.completedTricks.length;
+  const bidder = state.trump.bidder!;
+  const reserved = state.players[bidder].reserved;
+  if (reserved) {
+    state.players[bidder].reserved = null;
+    state.players[bidder].captured.push(reserved);
+    state.trump.revealed = true;
+    state.trump.revealedHow = 'closed';
+    state.trump.revealedBy = null;
+    state.trump.revealedAtTrick = played + 1;
+  }
+  state.trump.mustPlayTrump = null;
+  for (const pl of state.currentTrick?.plays ?? []) state.players[pl.seat].captured.push(pl.card);
+  for (const seat of SEATS) {
+    const p = state.players[seat];
+    p.captured.push(...p.hand);
+    p.hand = [];
+  }
+  state.currentTrick = null;
+  state.pendingLeader = null;
+  log(state, 'Everyone agreed to close the round after {n} tricks.', { n: played });
+  finishRound(state);
+  state.roundHistory[state.roundHistory.length - 1].closedAfter = played;
+}
+
 /** Apply one action. Pure: the input state is never mutated. */
 export function applyAction(input: GameState, action: Action, rng: Rng = Math.random): ActionResult {
   const state: GameState = structuredClone(input);
@@ -637,29 +725,17 @@ export function applyAction(input: GameState, action: Action, rng: Rng = Math.ra
       if ((err = requirePhase(state, 'PLAYING'))) return fail(err);
       const t = state.currentTrick;
       if (!t || t.plays.length !== 4 || !t.winner) return fail('There is no completed trick to collect');
-      const w = state.players[t.winner];
-      w.captured.push(...t.plays.map((pl) => pl.card));
-      w.tricksWon += 1;
-      state.completedTricks.push({
-        index: t.index, leader: t.leader, ledSuit: t.ledSuit!, winner: t.winner,
-        plays: t.plays.map((pl) => ({ seat: pl.seat, cardId: pl.card.id, trumpLive: pl.trumpLive })),
-      });
-      log(state, 'Trick {n} won by {p}.', { n: t.index, p: t.winner });
-      const winner = t.winner;
-      state.currentTrick = null;
-      const done = state.completedTricks.length;
-      if (done === 13) {
-        finishRound(state);
-      } else {
-        const leader = state.config.nextTrickLeader === 'afterWinner' ? nextSeat(winner) : winner;
-        if (done === 12 && !state.trump.revealed) {
-          state.phase = 'MANDATORY_REVEAL';
-          state.pendingLeader = leader;
-          state.currentPlayer = null;
-        } else {
-          startTrick(state, leader);
-        }
-      }
+      collectTrick(state);
+      return { ok: true, state };
+    }
+
+    case 'CLOSE_ROUND': {
+      if ((err = requirePhase(state, 'PLAYING', 'MANDATORY_REVEAL'))) return fail(err);
+      // A finished trick still on the table counts.
+      if (state.currentTrick?.plays.length === 4) collectTrick(state);
+      if (state.phase === 'ROUND_RESULT') return { ok: true, state };
+      if (!roundSettled(state)) return fail('The round can be closed only when its result can no longer change');
+      closeRound(state);
       return { ok: true, state };
     }
 

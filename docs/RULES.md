@@ -48,5 +48,8 @@ Team game (default team scoring):
 ## Score sheet
 One row per round, numbered 1, 2, 3… Under each name (team or player) there are two boxes: the running total after that round, and the next round's points. While a round is being played its call is shown in brackets.
 
+## Closing a round early
+Once the round's points can no longer change — every side has already reached its target, or can't reach it even by winning every trick left (for example, the defenders have 7 tricks against a bid of 7) — a **Close round** button appears. Every person at the table must tap it; until they all have, the computer plays for those who tapped (they can tap **Play myself** to take over again). Players who are away count as agreeing. When everyone agrees, the round ends with the tricks won so far, the remaining cards are gathered for the next shuffle, and the round is scored as usual — the points are exactly what the full round would have given. Against the computer, your tap closes the round at once.
+
 ## Ending the match
 After each completed round, if any side (team, or player in individual mode) has reached the target (30 or 50), the highest total wins. If two sides tie for the highest total at or above the target, another round is played (or, with the “share” house rule, they share the win). A match never ends mid-round. The dealer moves one seat clockwise each round.

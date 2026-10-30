@@ -221,6 +221,7 @@ export function RoundResult({ view, dispatch, canContinue = true }: { view: Play
           )}
         </>
       )}
+      {r.closedAfter != null && <p className="note">{i.t('Closed early by agreement after {n} tricks.', { n: i.num(r.closedAfter) })}</p>}
       {view.tieNote && <p className="note">{i.t('The leaders are tied — playing another round to break the tie.')}</p>}
       <div className="row end">
         {canContinue

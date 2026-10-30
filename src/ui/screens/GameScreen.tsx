@@ -133,6 +133,16 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
   const sm = useSmacks();
   useAISmacks(d.state, sm.add);
   const clock = useOfflineTurnTimer(d.state, settings.turnTimer ?? 0, d.paused, d.dispatch, difficulty);
+  // Closing a settled round: you are the only person at the table, so it closes at once
+  // (after a finished trick on the table has been gathered).
+  const [closing, setClosing] = useState(false);
+  useEffect(() => {
+    if (!closing) return;
+    const s = d.state;
+    if (s.phase === 'PLAYING' && s.currentTrick?.plays.length === 4) return;
+    setClosing(false);
+    if (s.phase === 'PLAYING' || s.phase === 'MANDATORY_REVEAL') d.dispatch({ type: 'CLOSE_ROUND' });
+  }, [closing, d.state, d.dispatch]);
 
   const profile = useProfile();
   const level = useMemo(() => levelOf(storage.loadStats()).level, []);
@@ -164,6 +174,7 @@ export function GameScreen({ initial, difficulty, friends, settings, onExit, onN
         onChangeSettings={onChangeSettings}
         smacks={sm.smacks}
         onSmack={() => sm.add(HUMAN)}
+        closeRound={{ people: [HUMAN], votes: closing ? [HUMAN] : [], onVote: setClosing }}
       />
       </TurnClockProvider>
       </SeatExtraProvider>

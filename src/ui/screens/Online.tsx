@@ -466,6 +466,11 @@ function TableWithNotices(props: Props & {
       exitLabel={i.t('Leave room')}
       voice={props.voice}
       notice={notice}
+      closeRound={{
+        people: SEATS.filter((s) => room.seats[s] && !room.autoplay.includes(s)),
+        votes: room.closeVotes ?? [],
+        onVote: (on) => send({ t: 'closeVote', on }),
+      }}
     />
   );
 }

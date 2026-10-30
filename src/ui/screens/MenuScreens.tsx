@@ -198,6 +198,8 @@ function RulesEn() {
       <h2>Scoring</h2>
       <p>Bid N and take at least N tricks: +N. Take fewer: −N. Extra tricks earn nothing more. The 10 (Bonus) call pays 13 when made and costs 10 when missed. If you passed, you need 5 tricks: +5 if you get them, −5 if not.</p>
       <p>In the team game, partners sit opposite each other and everything is team-wise. Partners may outbid each other. The team holding the highest bid needs that many tricks together; the other team needs 5 together. Each team scores plus or minus its target; there are no individual points. The first side to reach the target (30 or 50) after a round wins. Scores can go below zero.</p>
+      <h2>Closing a round early</h2>
+      <p>Sometimes the result is decided before the last trick — for example, the defenders already have 7 tricks against a bid of 7, so the bidders can’t make it. Once no remaining trick can change the points, a <b>Close round</b> button appears. Every player at the table must tap it: until they all have, the computer plays the cards of whoever tapped (tap <b>Play myself</b> to take over again). When everyone agrees, the round ends with the tricks won so far and the points are added.</p>
       <h2>Friends table</h2>
       <p>In a team game you can choose a Friends table: tap 😜 or a player’s name plate to throw an emoji at their face — love, laughs, tomatoes and worse. In Bangla, a Friends table uses the everyday card names.</p>
     </article>
@@ -222,6 +224,8 @@ function RulesBn() {
       <h2>পয়েন্ট</h2>
       <p>N ডেকে কমপক্ষে N পিঠ নিলে +N, কম নিলে −N। বেশি পিঠে বাড়তি পয়েন্ট নেই। ১০ (বোনাস) ডেকে ১০টি পিঠ নিলে +১৩, না নিলে −১০। পাস দিলে ৫টি পিঠ লাগবে: পেলে +৫, না পেলে −৫।</p>
       <p>দলের খেলায় সঙ্গীরা মুখোমুখি বসে, সবকিছু দলগতভাবে। সঙ্গীও সঙ্গীর ওপর ডাকতে পারে। যে দলের ডাক সবচেয়ে বড়, তাদের দুজনে মিলে ততগুলো পিঠ নিতে হবে; অন্য দলকে মিলে ৫টি। দল তার লক্ষ্যের সমান পয়েন্ট পায় বা হারায়; আলাদা কারো পয়েন্ট নেই। কোনো দান শেষে যে আগে লক্ষ্যে (৩০ বা ৫০) পৌঁছায় সে জেতে। পয়েন্ট শূন্যের নিচেও যেতে পারে।</p>
+      <h2>দান আগে শেষ করা</h2>
+      <p>কখনো শেষ পিঠের আগেই ফল ঠিক হয়ে যায় — যেমন ৭ ডাকের বিপক্ষে অন্য দল ৭টি পিঠ নিয়ে ফেলেছে, তাই ডাকদাতারা আর পারবে না। বাকি কোনো পিঠে পয়েন্ট আর বদলাতে না পারলে <b>দান শেষ করুন</b> বোতাম আসে। টেবিলের প্রত্যেককে এটি চাপতে হবে: সবাই না চাপা পর্যন্ত যে চেপেছে তার তাস কম্পিউটার খেলে দেয় (আবার নিজে খেলতে <b>নিজে খেলব</b> চাপুন)। সবাই রাজি হলে এ পর্যন্ত নেওয়া পিঠ দিয়েই দান শেষ হয় আর পয়েন্ট যোগ হয়।</p>
       <h2>বন্ধুদের টেবিল</h2>
       <p>দলের খেলায় “বন্ধুদের টেবিল” বেছে নিলে 😜 বা কারো নামের ঘরে চাপ দিয়ে তার মুখে ইমোজি ছুড়তে পারবেন — ভালোবাসা, হাসি, টমেটো আর আরও খারাপ কিছু। বাংলায় বন্ধুদের টেবিলে তাসের কথ্য নাম ব্যবহার হয় (এক্কা, সাহেব, বিবি; ইস্কাবন, ভালোবাসা, ইঁট, চিড়া)।</p>
     </article>
